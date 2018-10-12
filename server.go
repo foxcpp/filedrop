@@ -86,6 +86,25 @@ func (s *Server) removeFile(tx *sql.Tx, fileUUID string) error {
 	return nil
 }
 
+func (s *Server) OpenFile(fileUUID string) (io.Reader, error) {
+	// Just to check validity.
+	_, err := uuid.FromString(fileUUID)
+	if err != nil {
+		return nil, errors.Wrap(err, "uuid parse")
+	}
+
+	fileLocation := filepath.Join(s.Conf.StorageDir, fileUUID)
+	file, err := os.Open(fileLocation)
+	if err != nil {
+		if os.IsNotExist(err) {
+			s.removeFile(nil, fileUUID)
+			return nil, ErrFileDoesntExists
+		}
+		return nil, err
+	}
+	return file, nil
+}
+
 // GetFile opens file for reading.
 //
 // Note that access using this function is equivalent to access
