@@ -2,6 +2,8 @@ package filedrop_test
 
 import (
 	"net/http/httptest"
+	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -14,22 +16,25 @@ func TestGlobalMaxUses(t *testing.T) {
 	conf.Limits.MaxUses = 2
 	serv := initServ(conf)
 	ts := httptest.NewServer(serv)
+	defer os.RemoveAll(serv.Conf.StorageDir)
 	defer serv.Close()
 	defer ts.Close()
 	c := ts.Client()
 
 	url := string(doPOST(t, c, ts.URL + "/filedrop/meow.txt", "text/plain", strings.NewReader(file)))
 
-	// First should succeed (1 use).
-	doGET(t, c, url)
-	// Should succeed too (2 use).
-	doGET(t, c, url)
-
-	// Third use should fail.
-	if code := doGETFail(t, c, url); code != 404 {
-		t.Error("GET: HTTP", code)
-		t.FailNow()
-	}
+	t.Run("1 use", func(t *testing.T) {
+		doGET(t, c, url)
+	})
+	t.Run("2 use", func(t *testing.T) {
+		doGET(t, c, url)
+	})
+	t.Run("3 use (fail)", func(t *testing.T) {
+		if code := doGETFail(t, c, url); code != 404 {
+			t.Error("GET: HTTP", code)
+			t.FailNow()
+		}
+	})
 }
 
 func TestGlobalMaxFileSize(t *testing.T) {
@@ -37,12 +42,24 @@ func TestGlobalMaxFileSize(t *testing.T) {
 	conf.Limits.MaxFileSize = uint(len(file) - 20)
 	serv := initServ(conf)
 	ts := httptest.NewServer(serv)
+	defer os.RemoveAll(serv.Conf.StorageDir)
 	defer serv.Close()
 	defer ts.Close()
 	c := ts.Client()
 
-	// Submit should fail.
-	doPOSTFail(t, c, ts.URL + "/filedrop/meow.txt", "text/plain", strings.NewReader(file))
+	t.Log("Max size:", conf.Limits.MaxFileSize, "bytes")
+	if !t.Run("submit with size " + strconv.Itoa(len(file)), func(t *testing.T) {
+		doPOSTFail(t, c, ts.URL + "/filedrop/meow.txt", "text/plain", strings.NewReader(file))
+	}) {
+		t.FailNow()
+	}
+
+	strippedFile := file[:25]
+	if !t.Run("submit with size " + strconv.Itoa(len(strippedFile)), func(t *testing.T) {
+		doPOST(t, c, ts.URL + "/filedrop/meow.txt", "text/plain", strings.NewReader(strippedFile))
+	}) {
+		t.FailNow()
+	}
 }
 
 func TestGlobalMaxStoreTime(t *testing.T) {
@@ -50,22 +67,34 @@ func TestGlobalMaxStoreTime(t *testing.T) {
 	conf.Limits.MaxStoreSecs = 10
 	serv := initServ(conf)
 	ts := httptest.NewServer(serv)
+	defer os.RemoveAll(serv.Conf.StorageDir)
 	defer serv.Close()
 	defer ts.Close()
 	c := ts.Client()
 
-	url := string(doPOST(t, c, ts.URL + "/filedrop/meow.txt", "text/plain", strings.NewReader(file)))
+	var url string
+	if !t.Run("submit", func(t *testing.T) {
+		url = string(doPOST(t, c, ts.URL + "/filedrop/meow.txt", "text/plain", strings.NewReader(file)))
+	}) {
+		t.FailNow()
+	}
 
 	time.Sleep(5 * time.Second)
 
-	// Should be still available.
-	doGET(t, c, url)
+	if !t.Run("get after 5 seconds", func(t *testing.T) {
+		doGET(t, c, url)
+	}) {
+		t.FailNow()
+	}
 
 	time.Sleep(6 * time.Second)
 
-	// Should not longer be available.
-	if code := doGETFail(t, c, url); code != 404 {
-		t.Error("GET: HTTP", code)
+	if !t.Run("get after 11 seconds (fail)", func(t *testing.T) {
+		if code := doGETFail(t, c, url); code != 404 {
+			t.Error("GET: HTTP", code)
+			t.FailNow()
+		}
+	}) {
 		t.FailNow()
 	}
 }

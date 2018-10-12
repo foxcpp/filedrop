@@ -3,6 +3,7 @@ package filedrop_test
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -25,29 +26,45 @@ func TestAccessDenied(t *testing.T) {
 	conf.DownloadAuth.Callback = authCallback
 	serv := initServ(conf)
 	ts := httptest.NewServer(serv)
+	defer os.RemoveAll(serv.Conf.StorageDir)
 	defer serv.Close()
 	defer ts.Close()
 	c := ts.Client()
 
-	// Upload should fail.
-	doPOSTFail(t, c, ts.URL + "/filedrop/meow.txt?authToken=baz","text/plain", strings.NewReader(file))
+	if !t.Run("upload (fail)", func(t *testing.T) {
+		doPOSTFail(t, c, ts.URL + "/filedrop/meow.txt?authToken=baz","text/plain", strings.NewReader(file))
+	}) {
+		t.FailNow()
+	}
 
-	// Download too. Access check should be done before existence to deter scanning.
-	doGET(t, c, ts.URL + "/filedrop/AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA/meow.txt?authToken=baz")
+	// Access check should be done before existence check to deter scanning.
+	if !t.Run("download (fail)", func(t *testing.T) {
+		doGETFail(t, c, ts.URL + "/filedrop/AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA/meow.txt?authToken=baz")
+	}) {
+		t.FailNow()
+	}
 }
 
 func TestUploadAuth(t *testing.T) {
 	conf := filedrop.Default
 	conf.UploadAuth.Callback = authCallback
+	conf.DownloadAuth.Callback = authCallback
 	serv := initServ(conf)
 	ts := httptest.NewServer(serv)
+	defer os.RemoveAll(serv.Conf.StorageDir)
 	defer serv.Close()
 	defer ts.Close()
 	c := ts.Client()
 
-	// Upload should succeed.
-	doPOST(t, c, ts.URL + "/filedrop/meow.txt?authToken=baz","text/plain", strings.NewReader(file))
+	if !t.Run("upload", func(t *testing.T) {
+		doPOST(t, c, ts.URL + "/filedrop/meow.txt?authToken=foo","text/plain", strings.NewReader(file))
+	}) {
+		t.FailNow()
+	}
 
-	// But download no.
-	doGETFail(t, c, ts.URL + "/filedrop/AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA?authToken=foo")
+	if !t.Run("download (fail)", func(t *testing.T) {
+		doGETFail(t, c, ts.URL + "/filedrop/AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA?authToken=baz")
+	}) {
+		t.FailNow()
+	}
 }

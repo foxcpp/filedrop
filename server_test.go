@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -26,6 +28,12 @@ Meow Meow Meow Meow Meow Meow Meow Meow Meow Meow Meow Meow Meow Meow Meow Meow 
 
 func initServ(conf filedrop.Config) *filedrop.Server {
 	conf.DB = TestDBConf
+	tempDir, err := ioutil.TempDir("", "filedrop-tests-")
+	if err != nil {
+		panic(err)
+	}
+	conf.DB.DSN = filepath.Join(tempDir, "index.db")
+	conf.StorageDir = tempDir
 	serv, err := filedrop.New(conf)
 	if err != nil {
 		panic(err)
@@ -37,6 +45,11 @@ func initServ(conf filedrop.Config) *filedrop.Server {
 func TestNew(t *testing.T) {
 	conf := filedrop.Default
 	conf.DB = TestDBConf
+	tempDir, err := ioutil.TempDir("", "filedrop-tests")
+	if err != nil {
+		panic(err)
+	}
+	conf.StorageDir = tempDir
 
 	serv, err := filedrop.New(conf)
 	if err != nil {
@@ -56,14 +69,14 @@ func doPOST(t *testing.T, c *http.Client, url string, contentType string, reqBod
 		t.FailNow()
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode / 100 != 2 {
-		t.Error("POSt: HTTP", resp.StatusCode, resp.Status)
-		t.FailNow()
-	}
-
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		t.Error("ioutil.ReadAll:", err)
+		t.FailNow()
+	}
+	if resp.StatusCode / 100 != 2 {
+		t.Error("POST: HTTP", resp.StatusCode, resp.Status)
+		t.Error("Body:", string(body))
 		t.FailNow()
 	}
 	return body
@@ -90,14 +103,14 @@ func doGET(t *testing.T, c *http.Client, url string) []byte {
 		t.FailNow()
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode / 100 != 2 {
-		t.Error("GET: HTTP", resp.StatusCode, resp.Status)
-		t.FailNow()
-	}
-
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		t.Error("ioutil.ReadAll:", err)
+		t.FailNow()
+	}
+	if resp.StatusCode / 100 != 2 {
+		t.Error("GET: HTTP", resp.Status)
+		t.Error("Body:", string(body))
 		t.FailNow()
 	}
 	return body
@@ -120,6 +133,7 @@ func doGETFail(t *testing.T, c *http.Client, url string) int {
 func TestBasicSubmit(t *testing.T) {
 	serv := initServ(filedrop.Default)
 	ts := httptest.NewServer(serv)
+	defer os.RemoveAll(serv.Conf.StorageDir)
 	defer serv.Close()
 	defer ts.Close()
 	c := ts.Client()
@@ -146,6 +160,7 @@ func TestBasicSubmit(t *testing.T) {
 func TestDifferentFilename(t *testing.T) {
 	serv := initServ(filedrop.Default)
 	ts := httptest.NewServer(serv)
+	defer os.RemoveAll(serv.Conf.StorageDir)
 	defer serv.Close()
 	defer ts.Close()
 	c := ts.Client()
@@ -184,6 +199,7 @@ func TestNonExistent(t *testing.T) {
 	// Non-existent file should correctly return 404 code.
 	serv := initServ(filedrop.Default)
 	ts := httptest.NewServer(serv)
+	defer os.RemoveAll(serv.Conf.StorageDir)
 	defer serv.Close()
 	defer ts.Close()
 	c := ts.Client()
