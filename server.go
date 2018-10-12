@@ -23,6 +23,8 @@ type Server struct {
 	DB *db
 	Conf Config
 	Logger *log.Logger
+
+	fileCleanerStopChan chan bool
 }
 
 func New(conf Config) (*Server, error) {
@@ -30,14 +32,18 @@ func New(conf Config) (*Server, error) {
 	var err error
 
 	s.Conf = conf
+	s.fileCleanerStopChan = make(chan bool)
 	s.Logger = log.New(os.Stderr, "filedrop ", log.LstdFlags)
 	s.DB, err = openDB(conf.DB.Driver, conf.DB.DSN)
+
+	go s.fileCleaner()
+
 	return s, err
 }
 
 // AddFile adds file to storage and returns assigned UUID which can be directly
 // substituted into URL.
-func (s *Server) AddFile(contents io.Reader, maxUses uint, storeUntil time.Time) (string, error) {
+func (s *Server) AddFile(contents io.Reader, contentType string, maxUses uint, storeUntil time.Time) (string, error) {
 	fileUUID := uuid.NewV4()
 	outLocation := filepath.Join(s.Conf.StorageDir, fileUUID.String())
 
@@ -53,7 +59,7 @@ func (s *Server) AddFile(contents io.Reader, maxUses uint, storeUntil time.Time)
 	if _, err := io.Copy(file, contents); err != nil {
 		return "", errors.Wrap(err, "file write")
 	}
-	if err := s.DB.AddFile(nil, fileUUID.String(), maxUses, storeUntil); err != nil {
+	if err := s.DB.AddFile(nil, fileUUID.String(), contentType, maxUses, storeUntil); err != nil {
 		os.Remove(outLocation)
 		return "", errors.Wrap(err, "db add")
 	}
@@ -110,32 +116,32 @@ func (s *Server) OpenFile(fileUUID string) (io.Reader, error) {
 // Note that access using this function is equivalent to access
 // through HTTP API, so it will count against usage count, for example.
 // To avoid this use OpenFile(fileUUID).
-func (s *Server) GetFile(fileUUID string) (io.Reader, error) {
+func (s *Server) GetFile(fileUUID string) (r io.Reader, contentType string, err error) {
 	// Just to check validity.
-	_, err := uuid.FromString(fileUUID)
+	_, err = uuid.FromString(fileUUID)
 	if err != nil {
-		return nil, errors.Wrap(err, "uuid parse")
+		return nil, "", errors.Wrap(err, "uuid parse")
 	}
 
 	tx, err := s.DB.Begin()
 	if err != nil {
-		return nil, errors.Wrap(err, "tx begin")
+		return nil, "", errors.Wrap(err, "tx begin")
 	}
 	defer tx.Rollback() // rollback is no-op after commit
 
 	if s.DB.ShouldDelete(tx, fileUUID) {
 		if err := s.removeFile(tx, fileUUID); err != nil {
-			log.Println("Error while trying to remove file", fileUUID + ":", err)
+			s.Logger.Println("Error while trying to remove file", fileUUID + ":", err)
 
 		}
 		if err := tx.Commit(); err != nil {
-			log.Println("Tx commit error:", err)
-			return nil, err
+			s.Logger.Println("Tx commit error:", err)
+			return nil, "", err
 		}
-		return nil, ErrFileDoesntExists
+		return nil, "", ErrFileDoesntExists
 	}
 	if err := s.DB.AddUse(tx, fileUUID); err != nil {
-		return nil, errors.Wrap(err, "add use")
+		return nil, "", errors.Wrap(err, "add use")
 	}
 
 	fileLocation := filepath.Join(s.Conf.StorageDir, fileUUID)
@@ -143,15 +149,21 @@ func (s *Server) GetFile(fileUUID string) (io.Reader, error) {
 	if err != nil {
 		if os.IsNotExist(err) {
 			s.removeFile(tx, fileUUID)
-			return nil, ErrFileDoesntExists
+			return nil, "", ErrFileDoesntExists
 		}
-		return nil, err
+		return nil, "", err
 	}
 	if err := tx.Commit(); err != nil {
-		log.Println("Tx commit error:", err)
-		return nil, errors.Wrap(err, "tx commit")
+		s.Logger.Println("Tx commit error:", err)
+		return nil, "", errors.Wrap(err, "tx commit")
 	}
-	return file, nil
+
+	ttype, err := s.DB.ContentType(nil, fileUUID)
+	if err != nil {
+		return nil, "", errors.Wrap(err, "content type query")
+	}
+
+	return file, ttype, nil
 }
 
 func (s *Server) acceptFile(w http.ResponseWriter, r *http.Request) {
@@ -205,7 +217,7 @@ func (s *Server) acceptFile(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	fileUUID, err := s.AddFile(r.Body, maxUses, storeUntil)
+	fileUUID, err := s.AddFile(r.Body, r.Header.Get("Content-Type"), maxUses, storeUntil)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(err.Error()))
@@ -244,7 +256,7 @@ func (s *Server) serveFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	fileUUID := splittenPath[len(splittenPath)-2]
-	reader, err := s.GetFile(fileUUID)
+	reader, ttype, err := s.GetFile(fileUUID)
 	if err != nil {
 		if err == ErrFileDoesntExists {
 			w.WriteHeader(http.StatusNotFound)
@@ -255,6 +267,9 @@ func (s *Server) serveFile(w http.ResponseWriter, r *http.Request) {
 			w.Write([]byte(err.Error()))
 		}
 		return
+	}
+	if ttype != "" {
+		w.Header().Set("Content-Type", ttype)
 	}
 	w.WriteHeader(http.StatusOK)
 	_, err = io.Copy(w, reader)
@@ -276,5 +291,47 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) Close() error {
+	// don't close DB if "cleaner" is doing something, wait for it to finish
+	s.fileCleanerStopChan <- true
+	<-s.fileCleanerStopChan
+
 	return s.DB.Close()
+}
+
+func (s *Server) fileCleaner() {
+	tick := time.NewTicker(time.Minute)
+	for {
+		select {
+		case <-s.fileCleanerStopChan:
+			s.fileCleanerStopChan <- true
+			return
+		case <-tick.C:
+			s.cleanupFiles()
+		}
+	}
+}
+
+func (s *Server) cleanupFiles() {
+	tx, err := s.DB.Begin()
+	if err != nil {
+		s.Logger.Println("Failed to begin transaction for clean-up:", err)
+		return
+	}
+	defer tx.Rollback() // rollback is no-op after commit
+
+	uuids, err := s.DB.UnreachableFiles(tx)
+	if err != nil {
+		s.Logger.Println("Failed to get list of files pending removal:", err)
+		return
+	}
+
+	for _, fileUUID := range uuids {
+		if err := os.Remove(filepath.Join(s.Conf.StorageDir, fileUUID)); err !=nil {
+			s.Logger.Println("Failed to remove file during clean-up:", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		s.Logger.Println("Failed to begin transaction for clean-up:", err)
+	}
 }

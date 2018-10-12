@@ -210,3 +210,76 @@ func TestNonExistent(t *testing.T) {
 		t.FailNow()
 	}
 }
+
+func TestContentTypePreserved(t *testing.T) {
+	serv := initServ(filedrop.Default)
+	ts := httptest.NewServer(serv)
+	defer os.RemoveAll(serv.Conf.StorageDir)
+	defer serv.Close()
+	defer ts.Close()
+	c := ts.Client()
+
+	url := string(doPOST(t, c, ts.URL + "/filedrop/meow.txt", "text/kitteh", strings.NewReader(file)))
+
+	t.Log("File URL:", url)
+
+	resp, err := c.Get(url)
+	if err != nil {
+		t.Error("GET:", err)
+		t.FailNow()
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		t.Error("ioutil.ReadAll:", err)
+		t.FailNow()
+	}
+	if resp.StatusCode / 100 != 2 {
+		t.Error("GET: HTTP", resp.Status)
+		t.Error("Body:", string(body))
+		t.FailNow()
+	}
+	if resp.Header.Get("Content-Type") != "text/kitteh" {
+		t.Log("Mismatched content type:")
+		t.Log("\tWanted: 'text/kitteh'")
+		t.Log("\tGot:", "'" + resp.Header.Get("Content-Type") + "'")
+		t.Fail()
+	}
+}
+
+func testWithPrefix(t *testing.T, ts *httptest.Server, c *http.Client, prefix string) {
+	var URL string
+	t.Run("submit with prefix " + prefix, func(t *testing.T) {
+		URL = string(doPOST(t, c, ts.URL + prefix + "/meow.txt", "text/plain", strings.NewReader(file)))
+	})
+
+	if !strings.Contains(URL, prefix) {
+		t.Errorf("Result URL doesn't contain prefix %v: %v", prefix, URL)
+		t.FailNow()
+	}
+
+	if URL != "" {
+		t.Run("get with " + prefix, func(t *testing.T) {
+			body := doGET(t, c, URL)
+			if string(body) != file {
+				t.Error("Got different file!")
+				t.FailNow()
+			}
+		})
+	}
+}
+
+func TestPrefixAgnostic(t *testing.T) {
+	// Server should be able to handle requests independently
+	// from full URL.
+	serv := initServ(filedrop.Default)
+	ts := httptest.NewServer(serv)
+	defer os.RemoveAll(serv.Conf.StorageDir)
+	defer serv.Close()
+	defer ts.Close()
+	c := ts.Client()
+
+	testWithPrefix(t, ts, c, "/a/b/c/d/e/f/g")
+	testWithPrefix(t, ts, c, "/a/f%20oo/g")
+	testWithPrefix(t, ts, c, "")
+}

@@ -9,12 +9,14 @@ import (
 type db struct {
 	*sql.DB
 
-	addFile *sql.Stmt
-	remFile *sql.Stmt
-	getFile *sql.Stmt
+	addFile     *sql.Stmt
+	remFile     *sql.Stmt
+	contentType *sql.Stmt
 
-	addUse *sql.Stmt
+	addUse       *sql.Stmt
 	shouldDelete *sql.Stmt
+	cleanup      *sql.Stmt
+	pendingCleanup *sql.Stmt
 }
 
 func openDB(driver, dsn string) (*db, error) {
@@ -61,9 +63,10 @@ func openDB(driver, dsn string) (*db, error) {
 func (db *db) initSchema() error {
 	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS filedrop (
 		uuid TEXT PRIMARY KEY NOT NULL,
+		contentType TEXT DEFAULT NULL,
 		uses INTEGER NOT NULL DEFAULT 0,
-		maxUses INTEGER,
-		storeUntil INTEGER
+		maxUses INTEGER DEFAULT NULL,
+		storeUntil INTEGER DEFAULT NULL
 	)`)
 	if err != nil {
 		return err
@@ -73,7 +76,7 @@ func (db *db) initSchema() error {
 
 func (db *db) initStmts() error {
 	var err error
-	db.addFile, err = db.Prepare(`INSERT INTO filedrop(uuid, maxUses, storeUntil) VALUES (?, ?, ?)`)
+	db.addFile, err = db.Prepare(`INSERT INTO filedrop(uuid, contentType, maxUses, storeUntil) VALUES (?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
@@ -81,7 +84,7 @@ func (db *db) initStmts() error {
 	if err != nil {
 		return err
 	}
-	db.getFile, err = db.Prepare(`SELECT uses, maxUses, storeUntil FROM filedrop WHERE uuid = ?`)
+	db.contentType, err = db.Prepare(`SELECT contentType FROM filedrop WHERE uuid = ?`)
 	if err != nil {
 		return err
 	}
@@ -93,18 +96,27 @@ func (db *db) initStmts() error {
 	if err != nil {
 		return err
 	}
+	db.pendingCleanup, err = db.Prepare(`SELECT uuid FROM filedrop WHERE storeUntil < ? OR maxUses == uses`)
+	if err != nil {
+		return err
+	}
+	db.cleanup, err = db.Prepare(`DELETE FROM filedrop WHERE storeUntil < ? OR maxUses == uses`)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
-func (db *db) AddFile(tx *sql.Tx, uuid string, maxUses uint, storeUntil time.Time) error {
+func (db *db) AddFile(tx *sql.Tx, uuid string, contentType string, maxUses uint, storeUntil time.Time) error {
 	maxUsesN := sql.NullInt64{Int64: int64(maxUses), Valid: maxUses != 0}
 	storeUntilN := sql.NullInt64{Int64: storeUntil.Unix(), Valid: !storeUntil.IsZero()}
+	contentTypeN := sql.NullString{String: contentType, Valid: contentType != ""}
 
 	if tx != nil {
-		_, err := tx.Stmt(db.addFile).Exec(uuid, maxUsesN, storeUntilN)
+		_, err := tx.Stmt(db.addFile).Exec(uuid, contentTypeN, maxUsesN, storeUntilN)
 		return err
 	} else {
-		_, err := db.addFile.Exec(uuid, maxUsesN, storeUntilN)
+		_, err := db.addFile.Exec(uuid, contentTypeN, maxUsesN, storeUntilN)
 		return err
 	}
 }
@@ -139,6 +151,49 @@ func (db *db) AddUse(tx *sql.Tx, uuid string) error {
 		return err
 	} else {
 		_, err := db.addUse.Exec(uuid, uuid)
+		return err
+	}
+}
+
+func (db *db) ContentType(tx *sql.Tx, fileUUID string) (string, error) {
+	var row *sql.Row
+	if tx != nil {
+		row = tx.Stmt(db.contentType).QueryRow(fileUUID)
+	} else {
+		row = db.contentType.QueryRow(fileUUID)
+	}
+
+	res := ""
+	return res, row.Scan(&res)
+}
+
+func (db *db) UnreachableFiles(tx *sql.Tx) ([]string, error) {
+	uuids := []string{}
+	var rows *sql.Rows
+	var err error
+	if tx != nil {
+		rows, err = tx.Stmt(db.pendingCleanup).Query(time.Now().Unix())
+	} else {
+		rows, err = db.pendingCleanup.Query(time.Now().Unix())
+	}
+	if err != nil {
+		return uuids, err
+	}
+	for rows.Next() {
+		uuid := ""
+		if err := rows.Scan(&uuid); err != nil {
+			return uuids, err
+		}
+	}
+	return uuids, nil
+}
+
+func (db *db) RemoveUnreachableFiles(tx *sql.Tx) error {
+	if tx != nil {
+		_, err := tx.Stmt(db.cleanup).Exec(time.Now().Unix())
+		return err
+	} else {
+		_, err := db.cleanup.Exec(time.Now().Unix())
 		return err
 	}
 }
