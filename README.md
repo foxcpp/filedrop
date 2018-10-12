@@ -3,11 +3,13 @@ filedrop
 
 [![Travis CI](https://img.shields.io/travis/com/foxcpp/filedrop.svg?style=flat-square&logo=Linux)](https://travis-ci.com/foxcpp/filedrop)
 [![CodeCov](https://img.shields.io/codecov/c/github/foxcpp/filedrop.svg?style=flat-square)](https://codecov.io/gh/foxcpp/filedrop)
-[![Latest Release](https://img.shields.io/github/release/foxcpp/filedrop.svg?style=flat-square)](https://github.com/foxcpp/filedrop/releases/latest)
 [![Issues](https://img.shields.io/github/issues-raw/foxcpp/filedrop.svg?style=flat-square)](https://github.com/foxcpp/filedrop/issues)
 [![License](https://img.shields.io/github/license/foxcpp/filedrop.svg?style=flat-square)](https://github.com/foxcpp/filedrop/blob/master/LICENSE)
 
 Too lightweight file storage server with HTTP API.
+
+**Currently filedrop is implemented only as a library. Sections below also
+document ideas for standalone server. See issue #3.**
 
 ### HTTP API
 
@@ -34,16 +36,20 @@ You can specify `max-uses` and `store-time-secs` to override default settings
 from server configuration (however you can't set value higher then configured).
 
 ```
-POST /filedrop/screenshot.png?max-uses=5&store-time-secs=3600
+POST /filedrop/screenshot.png?max-uses=5&store-secs=3600
 ```
 Following request will store file screenshot.png for one hour (3600 seconds)
 and allow it to be downloaded not more than 10 times.
 
+
 ### Authorization
 
 filedrop supports very basic access control. Basically, it can execute SQL
-query with contents of `Authorization` header and file name. If query returns 1
-- access will be allowed, if query returns 0 or fails - client will get 403.
+query with contents of `Authorization` header and file name. If query returns 1 - access 
+will be allowed, if query returns 0 or fails - client will get 403.
+
+Also if you are using filedrop as a library, you can instead just pass custom 
+authorization callback. 
 
 See [configuration example](filedrop.example.yml) for details.
 
