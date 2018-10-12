@@ -25,6 +25,8 @@ type Config struct {
 	DB DBConfig
 	DownloadAuth AuthConfig
 	UploadAuth AuthConfig
+	StorageDir string
+	HTTPSUpstream bool
 }
 
 var Default Config
