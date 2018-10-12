@@ -1,4 +1,12 @@
-# filedrop
+filedrop
+==========
+
+[![Travis CI](https://img.shields.io/travis/com/foxcpp/filedrop.svg?style=flat-square&logo=Linux)](https://travis-ci.com/foxcpp/filedrop)
+[![CodeCov](https://img.shields.io/codecov/c/github/foxcpp/filedrop.svg?style=flat-square)](https://codecov.io/gh/foxcpp/filedrop)
+[![Latest Release](https://img.shields.io/github/release/foxcpp/filedrop.svg?style=flat-square)](https://github.com/foxcpp/filedrop/releases/latest)
+[![Issues](https://img.shields.io/github/issues-raw/foxcpp/filedrop.svg?style=flat-square)](https://github.com/foxcpp/filedrop/issues)
+[![License](https://img.shields.io/github/license/foxcpp/filedrop.svg?style=flat-square)](https://github.com/foxcpp/filedrop/blob/master/LICENSE)
+
 Too lightweight file storage server with HTTP API.
 
 ### HTTP API
