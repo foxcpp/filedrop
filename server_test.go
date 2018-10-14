@@ -19,7 +19,7 @@ import (
 
 var TestDBConf = filedrop.DBConfig{
 	Driver: "sqlite3",
-	DSN: ":memory:",
+	DSN:    ":memory:",
 }
 
 var file = `Meow Meow Meow Meow Meow Meow Meow Meow Meow Meow Meow Meow Meow Meow Meow Meow Meow Meow Meow Meow Meow 
@@ -43,6 +43,7 @@ func initServ(conf filedrop.Config) *filedrop.Server {
 
 // Test for correct initialization of server.
 func TestNew(t *testing.T) {
+	t.Parallel()
 	conf := filedrop.Default
 	conf.DB = TestDBConf
 	tempDir, err := ioutil.TempDir("", "filedrop-tests")
@@ -74,7 +75,7 @@ func doPOST(t *testing.T, c *http.Client, url string, contentType string, reqBod
 		t.Error("ioutil.ReadAll:", err)
 		t.FailNow()
 	}
-	if resp.StatusCode / 100 != 2 {
+	if resp.StatusCode/100 != 2 {
 		t.Error("POST: HTTP", resp.StatusCode, resp.Status)
 		t.Error("Body:", string(body))
 		t.FailNow()
@@ -89,7 +90,7 @@ func doPOSTFail(t *testing.T, c *http.Client, url string, contentType string, re
 		t.FailNow()
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode / 100 == 2 {
+	if resp.StatusCode/100 == 2 {
 		t.Error("POST: HTTP", resp.StatusCode, resp.Status)
 		t.FailNow()
 	}
@@ -108,7 +109,7 @@ func doGET(t *testing.T, c *http.Client, url string) []byte {
 		t.Error("ioutil.ReadAll:", err)
 		t.FailNow()
 	}
-	if resp.StatusCode / 100 != 2 {
+	if resp.StatusCode/100 != 2 {
 		t.Error("GET: HTTP", resp.Status)
 		t.Error("Body:", string(body))
 		t.FailNow()
@@ -123,7 +124,7 @@ func doGETFail(t *testing.T, c *http.Client, url string) int {
 		t.FailNow()
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode / 100 == 2 {
+	if resp.StatusCode/100 == 2 {
 		t.Error("GET: HTTP", resp.StatusCode, resp.Status)
 		t.FailNow()
 	}
@@ -138,7 +139,7 @@ func TestBasicSubmit(t *testing.T) {
 	defer ts.Close()
 	c := ts.Client()
 
-	url := string(doPOST(t, c, ts.URL + "/filedrop/meow.txt", "text/plain", strings.NewReader(file)))
+	url := string(doPOST(t, c, ts.URL+"/filedrop/meow.txt", "text/plain", strings.NewReader(file)))
 
 	t.Log("File URL:", url)
 	if !strings.HasSuffix(url, "meow.txt") {
@@ -165,7 +166,7 @@ func TestDifferentFilename(t *testing.T) {
 	defer ts.Close()
 	c := ts.Client()
 
-	fileUrl := string(doPOST(t, c, ts.URL + "/filedrop/meow.txt", "text/plain", strings.NewReader(file)))
+	fileUrl := string(doPOST(t, c, ts.URL+"/filedrop/meow.txt", "text/plain", strings.NewReader(file)))
 
 	t.Log("File URL:", fileUrl)
 	if !strings.HasSuffix(fileUrl, "meow.txt") {
@@ -204,7 +205,7 @@ func TestNonExistent(t *testing.T) {
 	defer ts.Close()
 	c := ts.Client()
 
-	code := doGETFail(t, c, ts.URL + "/filedrop/AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA/meow2.txt")
+	code := doGETFail(t, c, ts.URL+"/filedrop/AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA/meow2.txt")
 	if code != 404 {
 		t.Error("GET: HTTP", code)
 		t.FailNow()
@@ -219,7 +220,7 @@ func TestContentTypePreserved(t *testing.T) {
 	defer ts.Close()
 	c := ts.Client()
 
-	url := string(doPOST(t, c, ts.URL + "/filedrop/meow.txt", "text/kitteh", strings.NewReader(file)))
+	url := string(doPOST(t, c, ts.URL+"/filedrop/meow.txt", "text/kitteh", strings.NewReader(file)))
 
 	t.Log("File URL:", url)
 
@@ -234,7 +235,7 @@ func TestContentTypePreserved(t *testing.T) {
 		t.Error("ioutil.ReadAll:", err)
 		t.FailNow()
 	}
-	if resp.StatusCode / 100 != 2 {
+	if resp.StatusCode/100 != 2 {
 		t.Error("GET: HTTP", resp.Status)
 		t.Error("Body:", string(body))
 		t.FailNow()
@@ -242,15 +243,112 @@ func TestContentTypePreserved(t *testing.T) {
 	if resp.Header.Get("Content-Type") != "text/kitteh" {
 		t.Log("Mismatched content type:")
 		t.Log("\tWanted: 'text/kitteh'")
-		t.Log("\tGot:", "'" + resp.Header.Get("Content-Type") + "'")
+		t.Log("\tGot:", "'"+resp.Header.Get("Content-Type")+"'")
 		t.Fail()
 	}
 }
 
+func TestNoContentType(t *testing.T) {
+	serv := initServ(filedrop.Default)
+	ts := httptest.NewServer(serv)
+	defer os.RemoveAll(serv.Conf.StorageDir)
+	defer serv.Close()
+	defer ts.Close()
+	c := ts.Client()
+
+	url := string(doPOST(t, c, ts.URL+"/filedrop/meow.txt", "", strings.NewReader(file)))
+
+	t.Log("File URL:", url)
+
+	resp, err := c.Get(url)
+	if err != nil {
+		t.Error("GET:", err)
+		t.FailNow()
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		t.Error("ioutil.ReadAll:", err)
+		t.FailNow()
+	}
+	if resp.StatusCode/100 != 2 {
+		t.Error("GET: HTTP", resp.Status)
+		t.Error("Body:", string(body))
+		t.FailNow()
+	}
+	t.Log("Got:", "'"+resp.Header.Get("Content-Type")+"'")
+}
+
+func TestHTTPSDownstream(t *testing.T) {
+	serv := initServ(filedrop.Default)
+	ts := httptest.NewServer(serv)
+	defer os.RemoveAll(serv.Conf.StorageDir)
+	defer serv.Close()
+	defer ts.Close()
+	c := ts.Client()
+
+	t.Run("X-HTTPS-Downstream=1", func(t *testing.T) {
+		req, err := http.NewRequest("POST", ts.URL, strings.NewReader(file))
+		if err != nil {
+			t.Error(err)
+			t.FailNow()
+		}
+		req.Header.Set("X-HTTPS-Downstream", "1")
+		resp, err := c.Do(req)
+		if err != nil {
+			t.Error("POST:", err)
+			t.FailNow()
+		}
+		defer resp.Body.Close()
+		body, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			t.Error("ioutil.ReadAll:", err)
+			t.FailNow()
+		}
+		if resp.StatusCode/100 != 2 {
+			t.Error("POST: HTTP", resp.StatusCode, resp.Status)
+			t.Error("Body:", string(body))
+			t.FailNow()
+		}
+		if !strings.HasPrefix(string(body), "https") {
+			t.Error("Got non-HTTPS URl with X-HTTPS-Downstream=1")
+			t.FailNow()
+		}
+	})
+	t.Run("X-HTTPS-Downstream=0", func(t *testing.T) {
+		req, err := http.NewRequest("POST", ts.URL, strings.NewReader(file))
+		if err != nil {
+			t.Error(err)
+			t.FailNow()
+		}
+		req.Header.Set("X-HTTPS-Downstream", "0")
+		resp, err := c.Do(req)
+		if err != nil {
+			t.Error("POST:", err)
+			t.FailNow()
+		}
+		defer resp.Body.Close()
+		body, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			t.Error("ioutil.ReadAll:", err)
+			t.FailNow()
+		}
+		if resp.StatusCode/100 != 2 {
+			t.Error("POST: HTTP", resp.StatusCode, resp.Status)
+			t.Error("Body:", string(body))
+			t.FailNow()
+		}
+		if !strings.HasPrefix(string(body), "http") {
+			t.Error("Got non-HTTP URL with X-HTTPS-Downstream=0")
+			t.FailNow()
+		}
+	})
+}
+
 func testWithPrefix(t *testing.T, ts *httptest.Server, c *http.Client, prefix string) {
 	var URL string
-	t.Run("submit with prefix " + prefix, func(t *testing.T) {
-		URL = string(doPOST(t, c, ts.URL + prefix + "/meow.txt", "text/plain", strings.NewReader(file)))
+	t.Run("submit with prefix "+prefix, func(t *testing.T) {
+		URL = string(doPOST(t, c, ts.URL+prefix+"/meow.txt", "text/plain", strings.NewReader(file)))
 	})
 
 	if !strings.Contains(URL, prefix) {
@@ -259,7 +357,7 @@ func testWithPrefix(t *testing.T, ts *httptest.Server, c *http.Client, prefix st
 	}
 
 	if URL != "" {
-		t.Run("get with " + prefix, func(t *testing.T) {
+		t.Run("get with "+prefix, func(t *testing.T) {
 			body := doGET(t, c, URL)
 			if string(body) != file {
 				t.Error("Got different file!")

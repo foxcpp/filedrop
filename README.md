@@ -41,6 +41,8 @@ POST /filedrop/screenshot.png?max-uses=5&store-secs=3600
 Following request will store file screenshot.png for one hour (3600 seconds)
 and allow it to be downloaded not more than 10 times.
 
+**Note** To get `https` scheme in URLs downstream server should set header
+`X-HTTPS-Downstream` to `1` (or you can also set HTTPSDownstream config option)
 
 ### Authorization
 

@@ -3,14 +3,14 @@ package filedrop
 import "net/http"
 
 type LimitsConfig struct {
-	MaxUses uint
+	MaxUses      uint
 	MaxStoreSecs uint
-	MaxFileSize uint
+	MaxFileSize  uint
 }
 
 type DBConfig struct {
 	Driver string
-	DSN string
+	DSN    string
 }
 
 type AuthConfig struct {
@@ -21,12 +21,12 @@ type AuthConfig struct {
 }
 
 type Config struct {
-	Limits LimitsConfig
-	DB DBConfig
-	DownloadAuth AuthConfig
-	UploadAuth AuthConfig
-	StorageDir string
-	HTTPSUpstream bool
+	Limits          LimitsConfig
+	DB              DBConfig
+	DownloadAuth    AuthConfig
+	UploadAuth      AuthConfig
+	StorageDir      string
+	HTTPSDownstream bool
 }
 
 var Default Config

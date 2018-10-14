@@ -13,9 +13,9 @@ type db struct {
 	remFile     *sql.Stmt
 	contentType *sql.Stmt
 
-	addUse       *sql.Stmt
-	shouldDelete *sql.Stmt
-	cleanup      *sql.Stmt
+	addUse         *sql.Stmt
+	shouldDelete   *sql.Stmt
+	cleanup        *sql.Stmt
 	pendingCleanup *sql.Stmt
 }
 
@@ -38,7 +38,6 @@ func openDB(driver, dsn string) (*db, error) {
 	if err != nil {
 		return nil, err
 	}
-
 
 	if driver == "sqlite3" {
 		// Also some optimizations for SQLite to make it FAA-A-A-AST.
@@ -163,8 +162,8 @@ func (db *db) ContentType(tx *sql.Tx, fileUUID string) (string, error) {
 		row = db.contentType.QueryRow(fileUUID)
 	}
 
-	res := ""
-	return res, row.Scan(&res)
+	res := sql.NullString{}
+	return res.String, row.Scan(&res)
 }
 
 func (db *db) UnreachableFiles(tx *sql.Tx) ([]string, error) {

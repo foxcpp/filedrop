@@ -20,8 +20,8 @@ var ErrFileDoesntExists = errors.New("file doesn't exists")
 
 // filedrop server structure, implements http.Handler.
 type Server struct {
-	DB *db
-	Conf Config
+	DB     *db
+	Conf   Config
 	Logger *log.Logger
 
 	fileCleanerStopChan chan bool
@@ -81,7 +81,7 @@ func (s *Server) removeFile(tx *sql.Tx, fileUUID string) error {
 		return errors.Wrap(err, "uuid parse")
 	}
 
-	if err := s.DB.RemoveFile(tx, fileUUID); err !=nil {
+	if err := s.DB.RemoveFile(tx, fileUUID); err != nil {
 		return errors.Wrap(err, "db remove")
 	}
 
@@ -131,7 +131,7 @@ func (s *Server) GetFile(fileUUID string) (r io.Reader, contentType string, err 
 
 	if s.DB.ShouldDelete(tx, fileUUID) {
 		if err := s.removeFile(tx, fileUUID); err != nil {
-			s.Logger.Println("Error while trying to remove file", fileUUID + ":", err)
+			s.Logger.Println("Error while trying to remove file", fileUUID+":", err)
 
 		}
 		if err := tx.Commit(); err != nil {
@@ -226,7 +226,11 @@ func (s *Server) acceptFile(w http.ResponseWriter, r *http.Request) {
 
 	// Smart logic to convert request's URL into absolute result URL.
 	resURL := url.URL{}
-	if s.Conf.HTTPSUpstream {
+	if r.Header.Get("X-HTTPS-Downstream") == "1" {
+		resURL.Scheme = "https"
+	} else if r.Header.Get("X-HTTPS-Downstream") == "0" {
+		resURL.Scheme = "http"
+	} else if s.Conf.HTTPSDownstream {
 		resURL.Scheme = "https"
 	} else {
 		resURL.Scheme = "http"
@@ -326,7 +330,7 @@ func (s *Server) cleanupFiles() {
 	}
 
 	for _, fileUUID := range uuids {
-		if err := os.Remove(filepath.Join(s.Conf.StorageDir, fileUUID)); err !=nil {
+		if err := os.Remove(filepath.Join(s.Conf.StorageDir, fileUUID)); err != nil {
 			s.Logger.Println("Failed to remove file during clean-up:", err)
 		}
 	}
