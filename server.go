@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gofrs/uuid/v3"
 	"github.com/pkg/errors"
-	"github.com/satori/go.uuid"
 )
 
 var ErrFileDoesntExists = errors.New("file doesn't exists")
@@ -44,10 +44,13 @@ func New(conf Config) (*Server, error) {
 // AddFile adds file to storage and returns assigned UUID which can be directly
 // substituted into URL.
 func (s *Server) AddFile(contents io.Reader, contentType string, maxUses uint, storeUntil time.Time) (string, error) {
-	fileUUID := uuid.NewV4()
+	fileUUID, err := uuid.NewV4()
+	if err != nil {
+		return "", errors.Wrap(err, "UUID generation")
+	}
 	outLocation := filepath.Join(s.Conf.StorageDir, fileUUID.String())
 
-	_, err := os.Stat(outLocation)
+	_, err = os.Stat(outLocation)
 	if err == nil {
 		return "", errors.New("UUID collision detected")
 	}
