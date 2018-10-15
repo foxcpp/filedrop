@@ -278,6 +278,7 @@ func (s *Server) serveFile(w http.ResponseWriter, r *http.Request) {
 	if ttype != "" {
 		w.Header().Set("Content-Type", ttype)
 	}
+	w.Header().Set("Cache-Control", "public, immutable, max-age=31536000")
 	w.WriteHeader(http.StatusOK)
 	_, err = io.Copy(w, reader)
 	if err != nil {
