@@ -20,9 +20,10 @@ var ErrFileDoesntExists = errors.New("file doesn't exists")
 
 // filedrop server structure, implements http.Handler.
 type Server struct {
-	DB     *db
-	Conf   Config
-	Logger *log.Logger
+	DB          *db
+	Conf        Config
+	Logger      *log.Logger
+	DebugLogger *log.Logger
 
 	fileCleanerStopChan chan bool
 }
@@ -41,6 +42,12 @@ func New(conf Config) (*Server, error) {
 	return s, err
 }
 
+func (s *Server) dbgLog(v ...interface{}) {
+	if s.DebugLogger != nil {
+		s.DebugLogger.Println(v...)
+	}
+}
+
 // AddFile adds file to storage and returns assigned UUID which can be directly
 // substituted into URL.
 func (s *Server) AddFile(contents io.Reader, contentType string, maxUses uint, storeUntil time.Time) (string, error) {
@@ -52,18 +59,22 @@ func (s *Server) AddFile(contents io.Reader, contentType string, maxUses uint, s
 
 	_, err = os.Stat(outLocation)
 	if err == nil {
+		s.Logger.Println("UUID collision detected:", fileUUID)
 		return "", errors.New("UUID collision detected")
 	}
 
 	file, err := os.Create(outLocation)
 	if err != nil {
+		s.Logger.Printf("File create failure (%v): %v\n", fileUUID, err)
 		return "", errors.Wrap(err, "file open")
 	}
 	if _, err := io.Copy(file, contents); err != nil {
+		s.Logger.Printf("File write failure (%v): %v\n", fileUUID, err)
 		return "", errors.Wrap(err, "file write")
 	}
 	if err := s.DB.AddFile(nil, fileUUID.String(), contentType, maxUses, storeUntil); err != nil {
 		os.Remove(outLocation)
+		s.Logger.Printf("DB add failure (%v, %v, %v, %v): %v\n", fileUUID, contentType, maxUses, storeUntil, err)
 		return "", errors.Wrap(err, "db add")
 	}
 
@@ -85,11 +96,13 @@ func (s *Server) removeFile(tx *sql.Tx, fileUUID string) error {
 	}
 
 	if err := s.DB.RemoveFile(tx, fileUUID); err != nil {
+		s.Logger.Printf("DB remove failure (%v): %v\n", fileUUID, err)
 		return errors.Wrap(err, "db remove")
 	}
 
 	if err := os.Remove(fileLocation); err != nil {
 		// TODO: Recover DB entry?
+		s.Logger.Printf("File remove failure (%v): %v\n", fileUUID, err)
 		return errors.Wrap(err, "file remove")
 	}
 	return nil
@@ -132,13 +145,14 @@ func (s *Server) GetFile(fileUUID string) (r io.Reader, contentType string, err 
 	}
 	defer tx.Rollback() // rollback is no-op after commit
 
+	s.dbgLog("Serving file", fileUUID)
+
 	if s.DB.ShouldDelete(tx, fileUUID) {
+		s.dbgLog("File removed just before getting, UUID:", fileUUID)
 		if err := s.removeFile(tx, fileUUID); err != nil {
 			s.Logger.Println("Error while trying to remove file", fileUUID+":", err)
-
 		}
 		if err := tx.Commit(); err != nil {
-			s.Logger.Println("Tx commit error:", err)
 			return nil, "", err
 		}
 		return nil, "", ErrFileDoesntExists
@@ -157,7 +171,6 @@ func (s *Server) GetFile(fileUUID string) (r io.Reader, contentType string, err 
 		return nil, "", err
 	}
 	if err := tx.Commit(); err != nil {
-		s.Logger.Println("Tx commit error:", err)
 		return nil, "", errors.Wrap(err, "tx commit")
 	}
 
@@ -178,6 +191,8 @@ func (s *Server) acceptFile(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("403 forbidden"))
 		return
 	}
+
+	s.dbgLog("Acceping file")
 
 	if s.Conf.Limits.MaxFileSize != 0 && r.ContentLength > int64(s.Conf.Limits.MaxFileSize) {
 		w.WriteHeader(http.StatusRequestEntityTooLarge)
@@ -222,6 +237,7 @@ func (s *Server) acceptFile(w http.ResponseWriter, r *http.Request) {
 
 	fileUUID, err := s.AddFile(r.Body, r.Header.Get("Content-Type"), maxUses, storeUntil)
 	if err != nil {
+		s.Logger.Println("Error while serving", r.RequestURI+":", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(err.Error()))
 		return
@@ -268,8 +284,8 @@ func (s *Server) serveFile(w http.ResponseWriter, r *http.Request) {
 		if err == ErrFileDoesntExists {
 			w.WriteHeader(http.StatusNotFound)
 			w.Write([]byte("404 not found"))
-
 		} else {
+			s.Logger.Println("Error while serving", r.RequestURI+":", err)
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte(err.Error()))
 		}
@@ -331,6 +347,10 @@ func (s *Server) cleanupFiles() {
 	if err != nil {
 		s.Logger.Println("Failed to get list of files pending removal:", err)
 		return
+	}
+
+	if len(uuids) != 0 {
+		s.dbgLog(len(uuids), "to be removed")
 	}
 
 	for _, fileUUID := range uuids {
