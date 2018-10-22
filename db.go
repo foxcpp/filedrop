@@ -39,6 +39,9 @@ func openDB(driver, dsn string) (*db, error) {
 		return nil, err
 	}
 
+	if driver == "mysql" {
+		db.Exec(`SET SESSION TRANSACTION ISOLATION LEVEL SERIALIZABLE`)
+	}
 	if driver == "sqlite3" {
 		// Also some optimizations for SQLite to make it FAA-A-A-AST.
 		db.Exec(`PRAGMA foreign_keys = ON`)
@@ -50,60 +53,54 @@ func openDB(driver, dsn string) (*db, error) {
 		db.Exec(`PRAGMA cache_size = 5000`)
 	}
 
-	if err := db.initSchema(); err != nil {
-		panic(err)
-	}
-	if err := db.initStmts(); err != nil {
-		panic(err)
-	}
+	db.initSchema()
+	db.initStmts()
 	return db, nil
 }
 
-func (db *db) initSchema() error {
+func (db *db) initSchema() {
 	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS filedrop (
-		uuid TEXT PRIMARY KEY NOT NULL,
-		contentType TEXT DEFAULT NULL,
+		uuid CHAR(36) PRIMARY KEY NOT NULL,
+		contentType VARCHAR(255) DEFAULT NULL,
 		uses INTEGER NOT NULL DEFAULT 0,
 		maxUses INTEGER DEFAULT NULL,
 		storeUntil INTEGER DEFAULT NULL
 	)`)
 	if err != nil {
-		return err
+		panic(err)
 	}
-	return nil
 }
 
-func (db *db) initStmts() error {
+func (db *db) initStmts() {
 	var err error
 	db.addFile, err = db.Prepare(`INSERT INTO filedrop(uuid, contentType, maxUses, storeUntil) VALUES (?, ?, ?, ?)`)
 	if err != nil {
-		return err
+		panic(err)
 	}
 	db.remFile, err = db.Prepare(`DELETE FROM filedrop WHERE uuid = ?`)
 	if err != nil {
-		return err
+		panic(err)
 	}
 	db.contentType, err = db.Prepare(`SELECT contentType FROM filedrop WHERE uuid = ?`)
 	if err != nil {
-		return err
+		panic(err)
 	}
-	db.shouldDelete, err = db.Prepare(`SELECT exists(SELECT uuid FROM filedrop WHERE uuid = ? AND (storeUntil < ? OR maxUses == uses))`)
+	db.shouldDelete, err = db.Prepare(`SELECT EXISTS(SELECT uuid FROM filedrop WHERE uuid = ? AND (storeUntil < ? OR maxUses = uses))`)
 	if err != nil {
-		return err
+		panic(err)
 	}
-	db.addUse, err = db.Prepare(`UPDATE filedrop SET uses = (SELECT uses+1 FROM filedrop WHERE uuid = ?) WHERE uuid = ?`)
+	db.addUse, err = db.Prepare(`UPDATE filedrop SET uses = uses + 1 WHERE uuid = ?`)
 	if err != nil {
-		return err
+		panic(err)
 	}
-	db.pendingCleanup, err = db.Prepare(`SELECT uuid FROM filedrop WHERE storeUntil < ? OR maxUses == uses`)
+	db.pendingCleanup, err = db.Prepare(`SELECT uuid FROM filedrop WHERE storeUntil < ? OR maxUses = uses`)
 	if err != nil {
-		return err
+		panic(err)
 	}
-	db.cleanup, err = db.Prepare(`DELETE FROM filedrop WHERE storeUntil < ? OR maxUses == uses`)
+	db.cleanup, err = db.Prepare(`DELETE FROM filedrop WHERE storeUntil < ? OR maxUses = uses`)
 	if err != nil {
-		return err
+		panic(err)
 	}
-	return nil
 }
 
 func (db *db) AddFile(tx *sql.Tx, uuid string, contentType string, maxUses uint, storeUntil time.Time) error {
