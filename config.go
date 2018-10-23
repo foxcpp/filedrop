@@ -29,7 +29,7 @@ type Config struct {
 	HTTPSDownstream bool         `yaml:"https_downstream"`
 
 	// Internal, used only for testing. Always 60 secs in production.
-	CleanupIntervalSecs int	`yaml:"-"`
+	CleanupIntervalSecs int `yaml:"-"`
 }
 
 var Default Config

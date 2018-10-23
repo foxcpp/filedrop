@@ -21,7 +21,7 @@ func TestGlobalMaxUses(t *testing.T) {
 	defer ts.Close()
 	c := ts.Client()
 
-	url := string(doPOST(t, c, ts.URL + "/filedrop", "text/plain", strings.NewReader(file)))
+	url := string(doPOST(t, c, ts.URL+"/filedrop", "text/plain", strings.NewReader(file)))
 
 	t.Run("1 use", func(t *testing.T) {
 		doGET(t, c, url)
@@ -48,15 +48,15 @@ func TestGlobalMaxFileSize(t *testing.T) {
 	c := ts.Client()
 
 	t.Log("Max size:", conf.Limits.MaxFileSize, "bytes")
-	if !t.Run("submit with size " + strconv.Itoa(len(file)), func(t *testing.T) {
-		doPOSTFail(t, c, ts.URL + "/filedrop", "text/plain", strings.NewReader(file))
+	if !t.Run("submit with size "+strconv.Itoa(len(file)), func(t *testing.T) {
+		doPOSTFail(t, c, ts.URL+"/filedrop", "text/plain", strings.NewReader(file))
 	}) {
 		t.FailNow()
 	}
 
 	strippedFile := file[:25]
-	if !t.Run("submit with size " + strconv.Itoa(len(strippedFile)), func(t *testing.T) {
-		doPOST(t, c, ts.URL + "/filedrop", "text/plain", strings.NewReader(strippedFile))
+	if !t.Run("submit with size "+strconv.Itoa(len(strippedFile)), func(t *testing.T) {
+		doPOST(t, c, ts.URL+"/filedrop", "text/plain", strings.NewReader(strippedFile))
 	}) {
 		t.FailNow()
 	}
@@ -74,7 +74,7 @@ func TestGlobalMaxStoreTime(t *testing.T) {
 
 	var url string
 	if !t.Run("submit", func(t *testing.T) {
-		url = string(doPOST(t, c, ts.URL + "/filedrop", "text/plain", strings.NewReader(file)))
+		url = string(doPOST(t, c, ts.URL+"/filedrop", "text/plain", strings.NewReader(file)))
 	}) {
 		t.FailNow()
 	}

@@ -27,7 +27,7 @@ func TestPerFileMaxUses(t *testing.T) {
 	}
 
 	if !t.Run("submit with max-uses=3 (fail)", func(t *testing.T) {
-		doPOSTFail(t, c, ts.URL + "/filedrop?max-uses=3", "text/plain", strings.NewReader(file))
+		doPOSTFail(t, c, ts.URL+"/filedrop?max-uses=3", "text/plain", strings.NewReader(file))
 	}) {
 		t.FailNow()
 	}

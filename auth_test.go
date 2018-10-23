@@ -32,14 +32,14 @@ func TestAccessDenied(t *testing.T) {
 	c := ts.Client()
 
 	if !t.Run("upload (fail)", func(t *testing.T) {
-		doPOSTFail(t, c, ts.URL + "/filedrop?authToken=baz","text/plain", strings.NewReader(file))
+		doPOSTFail(t, c, ts.URL+"/filedrop?authToken=baz", "text/plain", strings.NewReader(file))
 	}) {
 		t.FailNow()
 	}
 
 	// Access check should be done before existence check to deter scanning.
 	if !t.Run("download (fail)", func(t *testing.T) {
-		doGETFail(t, c, ts.URL + "/filedrop/AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA/meow.txt?authToken=baz")
+		doGETFail(t, c, ts.URL+"/filedrop/AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA/meow.txt?authToken=baz")
 	}) {
 		t.FailNow()
 	}
@@ -57,13 +57,13 @@ func TestUploadAuth(t *testing.T) {
 	c := ts.Client()
 
 	if !t.Run("upload", func(t *testing.T) {
-		doPOST(t, c, ts.URL + "/filedrop?authToken=foo","text/plain", strings.NewReader(file))
+		doPOST(t, c, ts.URL+"/filedrop?authToken=foo", "text/plain", strings.NewReader(file))
 	}) {
 		t.FailNow()
 	}
 
 	if !t.Run("download (fail)", func(t *testing.T) {
-		doGETFail(t, c, ts.URL + "/filedrop/AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA?authToken=baz")
+		doGETFail(t, c, ts.URL+"/filedrop/AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA?authToken=baz")
 	}) {
 		t.FailNow()
 	}

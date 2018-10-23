@@ -175,14 +175,14 @@ func TestFakeFilename(t *testing.T) {
 	defer ts.Close()
 	c := ts.Client()
 
-	fileUrl := string(doPOST(t, c, ts.URL + "/filedrop", "text/plain", strings.NewReader(file)))
+	fileUrl := string(doPOST(t, c, ts.URL+"/filedrop", "text/plain", strings.NewReader(file)))
 	t.Log("File URL:", fileUrl)
 
 	t.Run("without fake filename", func(t *testing.T) {
 		doGET(t, c, fileUrl)
 	})
 	t.Run("with fake filename (meow.txt)", func(t *testing.T) {
-		doGET(t, c, fileUrl + "/meow.txt")
+		doGET(t, c, fileUrl+"/meow.txt")
 	})
 }
 
@@ -400,13 +400,13 @@ func TestCleanup(t *testing.T) {
 	defer ts.Close()
 	c := ts.Client()
 
-	URL := string(doPOST(t, c, ts.URL + "/filedrop?store-secs=1", "text/plain", strings.NewReader(file)))
+	URL := string(doPOST(t, c, ts.URL+"/filedrop?store-secs=1", "text/plain", strings.NewReader(file)))
 	splittenURL := strings.Split(URL, "/")
 	UUID := splittenURL[len(splittenURL)-1]
 	time.Sleep(2 * time.Second)
 
 	_, err := os.Stat(filepath.Join(serv.Conf.StorageDir, UUID))
-	if err == nil || !os.IsNotExist(err){
+	if err == nil || !os.IsNotExist(err) {
 		t.Error("Wanted 'no such file or directory', got:", err)
 		t.FailNow()
 	}
