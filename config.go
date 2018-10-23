@@ -27,6 +27,9 @@ type Config struct {
 	UploadAuth      AuthConfig   `yaml:"upload_auth"`
 	StorageDir      string       `yaml:"storage_dir"`
 	HTTPSDownstream bool         `yaml:"https_downstream"`
+
+	// Internal, used only for testing. Always 60 secs in production.
+	CleanupIntervalSecs int	`yaml:"-"`
 }
 
 var Default Config

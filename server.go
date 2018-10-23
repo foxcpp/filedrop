@@ -323,7 +323,10 @@ func (s *Server) Close() error {
 }
 
 func (s *Server) fileCleaner() {
-	tick := time.NewTicker(time.Minute)
+	if s.Conf.CleanupIntervalSecs == 0 {
+		s.Conf.CleanupIntervalSecs = 60
+	}
+	tick := time.NewTicker(time.Duration(s.Conf.CleanupIntervalSecs) * time.Second)
 	for {
 		select {
 		case <-s.fileCleanerStopChan:
@@ -343,20 +346,27 @@ func (s *Server) cleanupFiles() {
 	}
 	defer tx.Rollback() // rollback is no-op after commit
 
-	uuids, err := s.DB.UnreachableFiles(tx)
+	now := time.Now()
+
+	uuids, err := s.DB.StaleFiles(tx, now)
 	if err != nil {
 		s.Logger.Println("Failed to get list of files pending removal:", err)
 		return
 	}
 
 	if len(uuids) != 0 {
-		s.dbgLog(len(uuids), "to be removed")
+		s.dbgLog(len(uuids), "file to be removed")
 	}
 
 	for _, fileUUID := range uuids {
 		if err := os.Remove(filepath.Join(s.Conf.StorageDir, fileUUID)); err != nil {
 			s.Logger.Println("Failed to remove file during clean-up:", err)
 		}
+	}
+
+	if err := s.DB.RemoveStaleFiles(tx, now); err != nil {
+		s.Logger.Println("Failed to remove stale files from DB:", err)
+		return
 	}
 
 	if err := tx.Commit(); err != nil {

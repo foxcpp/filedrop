@@ -13,10 +13,10 @@ type db struct {
 	remFile     *sql.Stmt
 	contentType *sql.Stmt
 
-	addUse         *sql.Stmt
-	shouldDelete   *sql.Stmt
-	cleanup        *sql.Stmt
-	pendingCleanup *sql.Stmt
+	addUse           *sql.Stmt
+	shouldDelete     *sql.Stmt
+	removeStaleFiles *sql.Stmt
+	staleFiles       *sql.Stmt
 }
 
 func openDB(driver, dsn string) (*db, error) {
@@ -93,11 +93,11 @@ func (db *db) initStmts() {
 	if err != nil {
 		panic(err)
 	}
-	db.pendingCleanup, err = db.Prepare(`SELECT uuid FROM filedrop WHERE storeUntil < ? OR maxUses = uses`)
+	db.staleFiles, err = db.Prepare(`SELECT uuid FROM filedrop WHERE storeUntil < ? OR maxUses = uses`)
 	if err != nil {
 		panic(err)
 	}
-	db.cleanup, err = db.Prepare(`DELETE FROM filedrop WHERE storeUntil < ? OR maxUses = uses`)
+	db.removeStaleFiles, err = db.Prepare(`DELETE FROM filedrop WHERE storeUntil < ? OR maxUses = uses`)
 	if err != nil {
 		panic(err)
 	}
@@ -143,7 +143,7 @@ func (db *db) ShouldDelete(tx *sql.Tx, uuid string) bool {
 
 func (db *db) AddUse(tx *sql.Tx, uuid string) error {
 	if tx != nil {
-		_, err := tx.Stmt(db.addUse).Exec(uuid, uuid)
+		_, err := tx.Stmt(db.addUse).Exec(uuid)
 		return err
 	} else {
 		_, err := db.addUse.Exec(uuid, uuid)
@@ -163,14 +163,14 @@ func (db *db) ContentType(tx *sql.Tx, fileUUID string) (string, error) {
 	return res.String, row.Scan(&res)
 }
 
-func (db *db) UnreachableFiles(tx *sql.Tx) ([]string, error) {
+func (db *db) StaleFiles(tx *sql.Tx, now time.Time) ([]string, error) {
 	uuids := []string{}
 	var rows *sql.Rows
 	var err error
 	if tx != nil {
-		rows, err = tx.Stmt(db.pendingCleanup).Query(time.Now().Unix())
+		rows, err = tx.Stmt(db.staleFiles).Query(now.Unix())
 	} else {
-		rows, err = db.pendingCleanup.Query(time.Now().Unix())
+		rows, err = db.staleFiles.Query(now.Unix())
 	}
 	if err != nil {
 		return uuids, err
@@ -180,16 +180,17 @@ func (db *db) UnreachableFiles(tx *sql.Tx) ([]string, error) {
 		if err := rows.Scan(&uuid); err != nil {
 			return uuids, err
 		}
+		uuids = append(uuids, uuid)
 	}
 	return uuids, nil
 }
 
-func (db *db) RemoveUnreachableFiles(tx *sql.Tx) error {
+func (db *db) RemoveStaleFiles(tx *sql.Tx, now time.Time) error {
 	if tx != nil {
-		_, err := tx.Stmt(db.cleanup).Exec(time.Now().Unix())
+		_, err := tx.Stmt(db.removeStaleFiles).Exec(now.Unix())
 		return err
 	} else {
-		_, err := db.cleanup.Exec(time.Now().Unix())
+		_, err := db.removeStaleFiles.Exec(now.Unix())
 		return err
 	}
 }

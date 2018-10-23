@@ -381,3 +381,25 @@ func TestPrefixAgnostic(t *testing.T) {
 	testWithPrefix(t, ts, c, "/a/f%20oo/g")
 	testWithPrefix(t, ts, c, "")
 }
+
+func TestCleanup(t *testing.T) {
+	conf := filedrop.Default
+	conf.CleanupIntervalSecs = 1
+	serv := initServ(conf)
+	ts := httptest.NewServer(serv)
+	defer os.RemoveAll(serv.Conf.StorageDir)
+	defer serv.Close()
+	defer ts.Close()
+	c := ts.Client()
+
+	URL := string(doPOST(t, c, ts.URL + "/filedrop?store-secs=1", "text/plain", strings.NewReader(file)))
+	splittenURL := strings.Split(URL, "/")
+	UUID := splittenURL[len(splittenURL)-1]
+	time.Sleep(2 * time.Second)
+
+	_, err := os.Stat(filepath.Join(serv.Conf.StorageDir, UUID))
+	if err == nil || !os.IsNotExist(err){
+		t.Error("Wanted 'no such file or directory', got:", err)
+		t.FailNow()
+	}
+}
