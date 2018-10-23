@@ -34,6 +34,14 @@ func New(conf Config) (*Server, error) {
 	var err error
 
 	s.Conf = conf
+
+	if err := os.MkdirAll(conf.StorageDir, 660); err != nil {
+		return nil, err
+	}
+	if err := s.testPerms(); err != nil {
+		return nil, err
+	}
+
 	s.fileCleanerStopChan = make(chan bool)
 	s.Logger = log.New(os.Stderr, "filedrop ", log.LstdFlags)
 	s.DB, err = openDB(conf.DB.Driver, conf.DB.DSN)
@@ -47,6 +55,27 @@ func (s *Server) dbgLog(v ...interface{}) {
 	if s.DebugLogger != nil {
 		s.DebugLogger.Output(2, fmt.Sprintln(v...))
 	}
+}
+
+func (s *Server) testPerms() error {
+	testPath := filepath.Join(s.Conf.StorageDir, "test_file")
+
+	// Check write permissions.
+	f, err := os.Create(testPath)
+	if err != nil {
+		return err
+	}
+	f.Close()
+
+	// Check read permissions.
+	f, err = os.Open(testPath)
+	if err != nil {
+		return err
+	}
+	f.Close()
+
+	// Check remove permissions.
+	return os.Remove(testPath)
 }
 
 // AddFile adds file to storage and returns assigned UUID which can be directly
