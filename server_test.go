@@ -5,13 +5,14 @@ import (
 	"encoding/hex"
 	"io"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/foxcpp/filedrop"
 	_ "github.com/mattn/go-sqlite3"
@@ -37,6 +38,9 @@ func initServ(conf filedrop.Config) *filedrop.Server {
 	serv, err := filedrop.New(conf)
 	if err != nil {
 		panic(err)
+	}
+	if testing.Verbose() {
+		serv.DebugLogger = log.New(os.Stderr, "filedrop/debug ", log.Lshortfile)
 	}
 	return serv
 }
@@ -64,6 +68,8 @@ func TestNew(t *testing.T) {
 }
 
 func doPOST(t *testing.T, c *http.Client, url string, contentType string, reqBody io.Reader) []byte {
+	t.Helper()
+
 	resp, err := c.Post(url, contentType, reqBody)
 	if err != nil {
 		t.Error("POST:", err)
@@ -84,6 +90,8 @@ func doPOST(t *testing.T, c *http.Client, url string, contentType string, reqBod
 }
 
 func doPOSTFail(t *testing.T, c *http.Client, url string, contentType string, reqBody io.Reader) int {
+	t.Helper()
+
 	resp, err := c.Post(url, contentType, reqBody)
 	if err != nil {
 		t.Error("POST:", err)
@@ -98,6 +106,8 @@ func doPOSTFail(t *testing.T, c *http.Client, url string, contentType string, re
 }
 
 func doGET(t *testing.T, c *http.Client, url string) []byte {
+	t.Helper()
+
 	resp, err := c.Get(url)
 	if err != nil {
 		t.Error("GET:", err)
@@ -118,6 +128,8 @@ func doGET(t *testing.T, c *http.Client, url string) []byte {
 }
 
 func doGETFail(t *testing.T, c *http.Client, url string) int {
+	t.Helper()
+
 	resp, err := c.Get(url)
 	if err != nil {
 		t.Error("GET:", err)
@@ -139,13 +151,9 @@ func TestBasicSubmit(t *testing.T) {
 	defer ts.Close()
 	c := ts.Client()
 
-	url := string(doPOST(t, c, ts.URL+"/filedrop/meow.txt", "text/plain", strings.NewReader(file)))
+	url := string(doPOST(t, c, ts.URL+"/filedrop", "text/plain", strings.NewReader(file)))
 
 	t.Log("File URL:", url)
-	if !strings.HasSuffix(url, "meow.txt") {
-		t.Error("Missing filename suffix on URL")
-		t.FailNow()
-	}
 
 	fileBody := doGET(t, c, url)
 	if string(fileBody) != file {
@@ -158,42 +166,24 @@ func TestBasicSubmit(t *testing.T) {
 	}
 }
 
-func TestDifferentFilename(t *testing.T) {
-	serv := initServ(filedrop.Default)
+func TestFakeFilename(t *testing.T) {
+	conf := filedrop.Default
+	serv := initServ(conf)
 	ts := httptest.NewServer(serv)
 	defer os.RemoveAll(serv.Conf.StorageDir)
 	defer serv.Close()
 	defer ts.Close()
 	c := ts.Client()
 
-	fileUrl := string(doPOST(t, c, ts.URL+"/filedrop/meow.txt", "text/plain", strings.NewReader(file)))
-
+	fileUrl := string(doPOST(t, c, ts.URL + "/filedrop", "text/plain", strings.NewReader(file)))
 	t.Log("File URL:", fileUrl)
-	if !strings.HasSuffix(fileUrl, "meow.txt") {
-		t.Error("Missing filename suffix on URL")
-		t.FailNow()
-	}
-	parsedUrl, err := url.Parse(fileUrl)
-	if err != nil {
-		t.Error("Url parse failed:", err)
-		t.FailNow()
-	}
-	// Replace last path element (should be filename) with a different one.
-	splittenPath := strings.Split(parsedUrl.Path, "/")
-	splittenPath = splittenPath[:len(splittenPath)-1]
-	splittenPath = append(splittenPath, "meow2.txt")
-	parsedUrl.Path = strings.Join(splittenPath, "/")
-	fileUrl = parsedUrl.String()
 
-	fileBody := doGET(t, c, fileUrl)
-	if string(fileBody) != file {
-		t.Log("Got different file!")
-		sentHash := sha256.Sum256([]byte(file))
-		t.Log("Sent:", hex.EncodeToString(sentHash[:]))
-		recvHash := sha256.Sum256(fileBody)
-		t.Log("Received:", hex.EncodeToString(recvHash[:]))
-		t.FailNow()
-	}
+	t.Run("without fake filename", func(t *testing.T) {
+		doGET(t, c, fileUrl)
+	})
+	t.Run("with fake filename (meow.txt)", func(t *testing.T) {
+		doGET(t, c, fileUrl + "/meow.txt")
+	})
 }
 
 func TestNonExistent(t *testing.T) {
@@ -205,11 +195,29 @@ func TestNonExistent(t *testing.T) {
 	defer ts.Close()
 	c := ts.Client()
 
-	code := doGETFail(t, c, ts.URL+"/filedrop/AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA/meow2.txt")
-	if code != 404 {
-		t.Error("GET: HTTP", code)
-		t.FailNow()
-	}
+	t.Run("non-existent UUID in path", func(t *testing.T) {
+		code := doGETFail(t, c, ts.URL+"/filedrop/AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA")
+		if code != 404 {
+			t.Error("GET: HTTP", code)
+			t.FailNow()
+		}
+	})
+
+	t.Run("no UUID in path", func(t *testing.T) {
+		code := doGETFail(t, c, ts.URL+"/filedrop")
+		if code != 404 {
+			t.Error("GET: HTTP", code)
+			t.FailNow()
+		}
+	})
+
+	t.Run("invalid UUID in path", func(t *testing.T) {
+		code := doGETFail(t, c, ts.URL+"/filedrop/IAMINVALIDUUID")
+		if code != 404 {
+			t.Error("GET: HTTP", code)
+			t.FailNow()
+		}
+	})
 }
 
 func TestContentTypePreserved(t *testing.T) {
@@ -220,7 +228,7 @@ func TestContentTypePreserved(t *testing.T) {
 	defer ts.Close()
 	c := ts.Client()
 
-	url := string(doPOST(t, c, ts.URL+"/filedrop/meow.txt", "text/kitteh", strings.NewReader(file)))
+	url := string(doPOST(t, c, ts.URL+"/filedrop", "text/kitteh", strings.NewReader(file)))
 
 	t.Log("File URL:", url)
 
@@ -256,7 +264,7 @@ func TestNoContentType(t *testing.T) {
 	defer ts.Close()
 	c := ts.Client()
 
-	url := string(doPOST(t, c, ts.URL+"/filedrop/meow.txt", "", strings.NewReader(file)))
+	url := string(doPOST(t, c, ts.URL+"/filedrop", "", strings.NewReader(file)))
 
 	t.Log("File URL:", url)
 

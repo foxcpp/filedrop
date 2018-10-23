@@ -32,7 +32,7 @@ func TestAccessDenied(t *testing.T) {
 	c := ts.Client()
 
 	if !t.Run("upload (fail)", func(t *testing.T) {
-		doPOSTFail(t, c, ts.URL + "/filedrop/meow.txt?authToken=baz","text/plain", strings.NewReader(file))
+		doPOSTFail(t, c, ts.URL + "/filedrop?authToken=baz","text/plain", strings.NewReader(file))
 	}) {
 		t.FailNow()
 	}
@@ -57,7 +57,7 @@ func TestUploadAuth(t *testing.T) {
 	c := ts.Client()
 
 	if !t.Run("upload", func(t *testing.T) {
-		doPOST(t, c, ts.URL + "/filedrop/meow.txt?authToken=foo","text/plain", strings.NewReader(file))
+		doPOST(t, c, ts.URL + "/filedrop?authToken=foo","text/plain", strings.NewReader(file))
 	}) {
 		t.FailNow()
 	}

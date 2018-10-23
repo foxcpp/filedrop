@@ -2,6 +2,7 @@ package filedrop
 
 import (
 	"database/sql"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -44,7 +45,7 @@ func New(conf Config) (*Server, error) {
 
 func (s *Server) dbgLog(v ...interface{}) {
 	if s.DebugLogger != nil {
-		s.DebugLogger.Println(v...)
+		s.DebugLogger.Output(2, fmt.Sprintln(v...))
 	}
 }
 
@@ -136,7 +137,7 @@ func (s *Server) GetFile(fileUUID string) (r io.Reader, contentType string, err 
 	// Just to check validity.
 	_, err = uuid.FromString(fileUUID)
 	if err != nil {
-		return nil, "", errors.Wrap(err, "uuid parse")
+		return nil, "", ErrFileDoesntExists
 	}
 
 	tx, err := s.DB.Begin()
@@ -165,7 +166,7 @@ func (s *Server) GetFile(fileUUID string) (r io.Reader, contentType string, err 
 	file, err := os.Open(fileLocation)
 	if err != nil {
 		if os.IsNotExist(err) {
-			s.removeFile(tx, fileUUID)
+			s.DB.RemoveFile(tx, fileUUID)
 			return nil, "", ErrFileDoesntExists
 		}
 		return nil, "", err
@@ -184,15 +185,12 @@ func (s *Server) GetFile(fileUUID string) (r io.Reader, contentType string, err 
 
 func (s *Server) acceptFile(w http.ResponseWriter, r *http.Request) {
 	splittenPath := strings.Split(r.URL.Path, "/")
-	filename := splittenPath[len(splittenPath)-1]
 
 	if s.Conf.UploadAuth.Callback != nil && !s.Conf.UploadAuth.Callback(r) {
 		w.WriteHeader(http.StatusForbidden)
 		w.Write([]byte("403 forbidden"))
 		return
 	}
-
-	s.dbgLog("Acceping file")
 
 	if s.Conf.Limits.MaxFileSize != 0 && r.ContentLength > int64(s.Conf.Limits.MaxFileSize) {
 		w.WriteHeader(http.StatusRequestEntityTooLarge)
@@ -210,7 +208,7 @@ func (s *Server) acceptFile(w http.ResponseWriter, r *http.Request) {
 			w.Write([]byte("400 bad request (invalid store-secs value)"))
 			return
 		}
-		if uint(secs) > s.Conf.Limits.MaxStoreSecs {
+		if s.Conf.Limits.MaxStoreSecs != 0 && uint(secs) > s.Conf.Limits.MaxStoreSecs {
 			w.WriteHeader(http.StatusBadRequest)
 			w.Write([]byte("400 bad request (too big store-secs value)"))
 			return
@@ -228,7 +226,7 @@ func (s *Server) acceptFile(w http.ResponseWriter, r *http.Request) {
 			w.Write([]byte("400 bad request (invalid max-uses value)"))
 			return
 		}
-		if uint(maxUses) > s.Conf.Limits.MaxUses {
+		if s.Conf.Limits.MaxUses != 0 && uint(maxUses) > s.Conf.Limits.MaxUses {
 			w.WriteHeader(http.StatusBadRequest)
 			w.Write([]byte("400 bad request (too big max-uses value)"))
 			return
@@ -243,6 +241,8 @@ func (s *Server) acceptFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.dbgLog("Accepted file, assigned UUID is", fileUUID)
+
 	// Smart logic to convert request's URL into absolute result URL.
 	resURL := url.URL{}
 	if r.Header.Get("X-HTTPS-Downstream") == "1" {
@@ -255,10 +255,7 @@ func (s *Server) acceptFile(w http.ResponseWriter, r *http.Request) {
 		resURL.Scheme = "http"
 	}
 	resURL.Host = r.Host
-	// Drop last two components of path.
-	splittenPath = splittenPath[:len(splittenPath)-1]
 	splittenPath = append(splittenPath, fileUUID)
-	splittenPath = append(splittenPath, filename)
 	resURL.Path = strings.Join(splittenPath, "/")
 
 	w.WriteHeader(http.StatusCreated)
@@ -278,7 +275,16 @@ func (s *Server) serveFile(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("404 not found"))
 		return
 	}
-	fileUUID := splittenPath[len(splittenPath)-2]
+	fileUUID := splittenPath[len(splittenPath)-1]
+	if _, err := uuid.FromString(fileUUID); err != nil {
+		// Probably last component is fake "filename".
+		if len(splittenPath) == 1 {
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte("404 not found"))
+			return
+		}
+		fileUUID = splittenPath[len(splittenPath)-2]
+	}
 	reader, ttype, err := s.GetFile(fileUUID)
 	if err != nil {
 		if err == ErrFileDoesntExists {

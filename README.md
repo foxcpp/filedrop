@@ -13,23 +13,26 @@ document ideas for standalone server. See issue #3.**
 
 ### HTTP API
 
-POST single file to `/filedrop` to save it. 
+POST single file to any endpoint to save it.
 For example:
 ```
-POST /filedrop/screenshot.png
+POST /filedrop
 Content-Type: image/png
 Content-Length: XXXX
 ```
 
-You will get response with full file URL, like this one:
+You will get response with full file URL (endpoint used to POST + UUID), like this one:
 ```
-http://example.com/filedrop/41a8f78c-ce06-11e8-b2ed-b083fe9824ac/screenshot.png
+http://example.com/filedrop/41a8f78c-ce06-11e8-b2ed-b083fe9824ac
 ```
 
-Actually only UUID is used for file access. So you can change last part of URL 
-how you like:
+You can add anything as last component to URL to give it human-understandable meaning:
 ```
 http://example.com/filedrop/41a8f78c-ce06-11e8-b2ed-b083fe9824ac/amazing-screenshot.png
+```
+However you can't add more than one component:
+```
+http://example.com/filedrop/41a8f78c-ce06-11e8-b2ed-b083fe9824ac/invalid/in/filedrop
 ```
 
 You can specify `max-uses` and `store-time-secs` to override default settings
