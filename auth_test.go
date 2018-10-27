@@ -3,7 +3,6 @@ package filedrop_test
 import (
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 
@@ -26,8 +25,7 @@ func TestAccessDenied(t *testing.T) {
 	conf.DownloadAuth.Callback = authCallback
 	serv := initServ(conf)
 	ts := httptest.NewServer(serv)
-	defer os.RemoveAll(serv.Conf.StorageDir)
-	defer serv.Close()
+	defer cleanServ(serv)
 	defer ts.Close()
 	c := ts.Client()
 
@@ -51,8 +49,7 @@ func TestUploadAuth(t *testing.T) {
 	conf.DownloadAuth.Callback = authCallback
 	serv := initServ(conf)
 	ts := httptest.NewServer(serv)
-	defer os.RemoveAll(serv.Conf.StorageDir)
-	defer serv.Close()
+	defer cleanServ(serv)
 	defer ts.Close()
 	c := ts.Client()
 

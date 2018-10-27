@@ -1,4 +1,4 @@
-// +build postgresql
+// +build postgres
 
 package filedrop
 
