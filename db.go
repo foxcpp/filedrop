@@ -2,12 +2,15 @@ package filedrop
 
 import (
 	"database/sql"
+	"strconv"
 	"strings"
 	"time"
 )
 
 type db struct {
 	*sql.DB
+
+	Driver, DSN string
 
 	addFile     *sql.Stmt
 	remFile     *sql.Stmt
@@ -39,6 +42,9 @@ func openDB(driver, dsn string) (*db, error) {
 		return nil, err
 	}
 
+	db.Driver = driver
+	db.DSN = dsn
+
 	if driver == "mysql" {
 		db.Exec(`SET SESSION TRANSACTION ISOLATION LEVEL SERIALIZABLE`)
 	}
@@ -69,6 +75,28 @@ func (db *db) initSchema() {
 	if err != nil {
 		panic(err)
 	}
+}
+
+func (db *db) reformatBindvars(raw string) (res string) {
+	// THIS IS VERY LIMITED IMPLEMENTATION.
+	// If someday this will become not enough - just switch to https://github.com/jmoiron/sqlx.
+	res = raw
+
+	// sqlite3 supports both $N and ?.
+	// mysql supports only ?.
+	// postgresql supports only $1 (SHOWFLAKE!!!).
+
+	if db.Driver == "postgres" {
+		varCount := strings.Count(raw, "?")
+		for i := 1; i <= varCount; i++ {
+			res = strings.Replace(res, "?", "$"+strconv.Itoa(i), 1)
+		}
+	}
+	return
+}
+
+func (db *db) Prepare(query string) (*sql.Stmt, error) {
+	return db.DB.Prepare(db.reformatBindvars(query))
 }
 
 func (db *db) initStmts() {
