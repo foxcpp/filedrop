@@ -70,7 +70,7 @@ func (db *db) initSchema() {
 		contentType VARCHAR(255) DEFAULT NULL,
 		uses INTEGER NOT NULL DEFAULT 0,
 		maxUses INTEGER DEFAULT NULL,
-		storeUntil INTEGER DEFAULT NULL
+		storeUntil BIGINT DEFAULT NULL
 	)`)
 	if err != nil {
 		panic(err)
