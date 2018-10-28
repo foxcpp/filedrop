@@ -2,12 +2,15 @@ package filedrop
 
 import (
 	"database/sql"
+	"strconv"
 	"strings"
 	"time"
 )
 
 type db struct {
 	*sql.DB
+
+	Driver, DSN string
 
 	addFile     *sql.Stmt
 	remFile     *sql.Stmt
@@ -39,6 +42,9 @@ func openDB(driver, dsn string) (*db, error) {
 		return nil, err
 	}
 
+	db.Driver = driver
+	db.DSN = dsn
+
 	if driver == "mysql" {
 		db.Exec(`SET SESSION TRANSACTION ISOLATION LEVEL SERIALIZABLE`)
 	}
@@ -64,11 +70,33 @@ func (db *db) initSchema() {
 		contentType VARCHAR(255) DEFAULT NULL,
 		uses INTEGER NOT NULL DEFAULT 0,
 		maxUses INTEGER DEFAULT NULL,
-		storeUntil INTEGER DEFAULT NULL
+		storeUntil BIGINT DEFAULT NULL
 	)`)
 	if err != nil {
 		panic(err)
 	}
+}
+
+func (db *db) reformatBindvars(raw string) (res string) {
+	// THIS IS VERY LIMITED IMPLEMENTATION.
+	// If someday this will become not enough - just switch to https://github.com/jmoiron/sqlx.
+	res = raw
+
+	// sqlite3 supports both $N and ?.
+	// mysql supports only ?.
+	// postgresql supports only $1 (SHOWFLAKE!!!).
+
+	if db.Driver == "postgres" {
+		varCount := strings.Count(raw, "?")
+		for i := 1; i <= varCount; i++ {
+			res = strings.Replace(res, "?", "$"+strconv.Itoa(i), 1)
+		}
+	}
+	return
+}
+
+func (db *db) Prepare(query string) (*sql.Stmt, error) {
+	return db.DB.Prepare(db.reformatBindvars(query))
 }
 
 func (db *db) initStmts() {
@@ -134,11 +162,19 @@ func (db *db) ShouldDelete(tx *sql.Tx, uuid string) bool {
 	} else {
 		row = db.shouldDelete.QueryRow(uuid, time.Now().Unix())
 	}
-	res := 0
-	if err := row.Scan(&res); err != nil {
-		return false
+	if db.Driver != "postgres" {
+		res := 0
+		if err := row.Scan(&res); err != nil {
+			return false
+		}
+		return res == 1
+	} else {
+		res := false
+		if err := row.Scan(&res); err != nil {
+			return false
+		}
+		return res
 	}
-	return res == 1
 }
 
 func (db *db) AddUse(tx *sql.Tx, uuid string) error {

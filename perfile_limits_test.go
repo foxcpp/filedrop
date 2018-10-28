@@ -2,7 +2,6 @@ package filedrop_test
 
 import (
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -15,8 +14,7 @@ func TestPerFileMaxUses(t *testing.T) {
 	conf.Limits.MaxUses = 2
 	serv := initServ(conf)
 	ts := httptest.NewServer(serv)
-	defer os.RemoveAll(serv.Conf.StorageDir)
-	defer serv.Close()
+	defer cleanServ(serv)
 	defer ts.Close()
 	c := ts.Client()
 
@@ -55,8 +53,7 @@ func TestPerFileStoreTime(t *testing.T) {
 	conf.Limits.MaxStoreSecs = 5
 	serv := initServ(conf)
 	ts := httptest.NewServer(serv)
-	defer os.RemoveAll(serv.Conf.StorageDir)
-	defer serv.Close()
+	defer cleanServ(serv)
 	defer ts.Close()
 	c := ts.Client()
 
@@ -104,8 +101,7 @@ func TestUnboundedFileLimits(t *testing.T) {
 	conf := filedrop.Default
 	serv := initServ(conf)
 	ts := httptest.NewServer(serv)
-	defer os.RemoveAll(serv.Conf.StorageDir)
-	defer serv.Close()
+	defer cleanServ(serv)
 	defer ts.Close()
 	c := ts.Client()
 
