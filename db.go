@@ -162,11 +162,19 @@ func (db *db) ShouldDelete(tx *sql.Tx, uuid string) bool {
 	} else {
 		row = db.shouldDelete.QueryRow(uuid, time.Now().Unix())
 	}
-	res := 0
-	if err := row.Scan(&res); err != nil {
-		return false
+	if db.Driver != "postgres" {
+		res := 0
+		if err := row.Scan(&res); err != nil {
+			return false
+		}
+		return res == 1
+	} else {
+		res := false
+		if err := row.Scan(&res); err != nil {
+			return false
+		}
+		return res
 	}
-	return res == 1
 }
 
 func (db *db) AddUse(tx *sql.Tx, uuid string) error {
