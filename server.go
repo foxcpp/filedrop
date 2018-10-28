@@ -35,7 +35,7 @@ func New(conf Config) (*Server, error) {
 
 	s.Conf = conf
 
-	if err := os.MkdirAll(conf.StorageDir, 660); err != nil {
+	if err := os.MkdirAll(conf.StorageDir, os.ModePerm); err != nil {
 		return nil, err
 	}
 	if err := s.testPerms(); err != nil {
