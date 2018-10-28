@@ -1,0 +1,13 @@
+[Unit]
+Description=filedrop standalone server
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/filedropd /etc/filedropd.yml
+Restart=on-failure
+DynamicUser=true
+StateDirectory=filedrop
+
+[Install]
+WantedBy=multi-user.target

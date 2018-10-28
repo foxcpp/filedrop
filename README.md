@@ -6,10 +6,62 @@ filedrop
 [![Issues](https://img.shields.io/github/issues-raw/foxcpp/filedrop.svg?style=flat-square)](https://github.com/foxcpp/filedrop/issues)
 [![License](https://img.shields.io/github/license/foxcpp/filedrop.svg?style=flat-square)](https://github.com/foxcpp/filedrop/blob/master/LICENSE)
 
-Too lightweight file storage server with HTTP API.
+Lightweight file storage server with HTTP API.
 
-**Currently filedrop is implemented only as a library. Sections below also
-document ideas for standalone server. See issue #3.**
+### Features
+- Painless configuration! You don't even have to `rewrite` requests on your reverse proxy!
+- Limits support! Link usage count, file size and storage time.
+- Embeddable! Can run as part of your application.
+
+You can use filedrop either as a standalone server or as a part of your application.
+In former case you want to check `filedropd` subpackage, in later case just
+import `filedrop` package and pass config stucture to `filedrop.New`, returned
+object implements `http.Handler` so you can use it how you like.
+
+### Installation
+
+This repository uses Go 1.11 modules. Things may work with old `GOPATH`
+approach but we don't support it so don't report cryptic compilation errors
+caused by wrong dependency version.
+
+`master` branch contains code from latest (pre-)release. `dev` branch
+contains bleeding-edge code. You probably want to use one of [tagged
+releases](https://github.com/foxcpp/filedrop/releases).
+
+#### SQL drivers
+
+filedrop uses SQL database as a meta-information storage so you need a
+SQL driver for it to use.
+
+When building standalone server you may want to enable one of the
+supported SQL DBMS using build tags:
+* `postgres` for PostgreSQL
+* `sqlite3` for SQLite3
+* `mysql` for MySQL
+
+**Note:** No SQL server support is planned. However if you would like
+to see it - PRs are welcome.
+
+When using filedrop as a library you are given more freedom. Just make
+sure that you import driver you use.
+
+#### Library
+
+Just use `github.com/foxcpp/filedrop` as any other library. Documentation
+is here: [godoc.org](https://godoc.org/github.com/foxcpp/filedrop).
+
+#### Standalone server
+
+See `fildropd` subdirectory. To start server you need a configuration
+file. See example [here](filedrop.example.yml). It should be pretty
+straightforward. Then just pass path to configuration file in
+command-line arguments.
+
+```
+filedropd /etc/filedropd.yml
+```
+
+systemd unit file is included for your convenience.
 
 ### HTTP API
 
@@ -49,27 +101,7 @@ and allow it to be downloaded not more than 10 times.
 
 ### Authorization
 
-filedrop supports very basic access control. Basically, it can execute SQL
-query with contents of `Authorization` header and file name. If query returns 1 - access 
-will be allowed, if query returns 0 or fails - client will get 403.
+When using filedrop as a library you can setup custom callbacks
+for access control.
 
-Also if you are using filedrop as a library, you can instead just pass custom 
-authorization callback. 
-
-See [configuration example](filedrop.example.yml) for details.
-
-### Installation
-
-`go get` or clone this repo and build binary from `filedropd` package. Pass
-path to configuration in first argument. You are perfect.
-
-### Configuration
-
-[Documented example](filedrop.example.yml) is included in repo, check it out.
-
-### Embedding
-
-If your backend server is written in Golang or you are not a big fan of
-microservices architecture - you can run filedrop server as part of your
-program. See [documentation](godocs.org/github.com/foxcpp/filedrop) for
-details.
+See `filedrop.AuthConfig` documentation.

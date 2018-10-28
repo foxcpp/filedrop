@@ -7,4 +7,5 @@ require (
 	github.com/mattn/go-sqlite3 v1.9.0
 	github.com/pkg/errors v0.8.0
 	google.golang.org/appengine v1.2.0 // indirect
+	gopkg.in/yaml.v2 v2.2.1
 )

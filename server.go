@@ -19,7 +19,7 @@ import (
 
 var ErrFileDoesntExists = errors.New("file doesn't exists")
 
-// filedrop server structure, implements http.Handler.
+// Main filedrop server structure, implements http.Handler.
 type Server struct {
 	DB          *db
 	Conf        Config
@@ -29,6 +29,10 @@ type Server struct {
 	fileCleanerStopChan chan bool
 }
 
+// Create and initialize new server instance using passed configuration.
+//
+// serv.Logger will be redirected to os.Stderr by default.
+// Created instances should be closed by using serv.Close.
 func New(conf Config) (*Server, error) {
 	s := new(Server)
 	var err error
@@ -138,6 +142,8 @@ func (s *Server) removeFile(tx *sql.Tx, fileUUID string) error {
 	return nil
 }
 
+// OpenFile opens file for reading without any other side-effects
+// applied (such as "link" usage counting).
 func (s *Server) OpenFile(fileUUID string) (io.ReadSeeker, error) {
 	// Just to check validity.
 	_, err := uuid.FromString(fileUUID)
@@ -334,6 +340,10 @@ func (s *Server) serveFile(w http.ResponseWriter, r *http.Request) {
 	http.ServeContent(w, r, fileUUID, time.Time{}, reader)
 }
 
+// ServeHTTP implements http.Handler for filedrop.Server.
+//
+// Note that filedrop code is URL prefix-agnostic, so request URI doesn't
+// matters much.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
 		s.acceptFile(w, r)

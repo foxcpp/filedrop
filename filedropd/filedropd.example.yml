@@ -1,0 +1,37 @@
+# IP:PORT to listen on.
+# Use 0.0.0.0 to listen on all interfaces, however we recommend using
+# reverse proxy for caching and stuff.
+listen_on: "127.0.0.1:8000"
+
+limits:
+  # How much much times file can be accessed. Note that it also counts HEAD requests
+  # and incomplete downloads (byte-range requests).
+  # Per-file max-uses parameter can't exceed this value but can be smaller.
+  max_uses: 60
+
+  # Max time for which files will be stored on filedrop server. Per-file store-secs
+  # parameter can't exceed this value but can be smaller.
+  max_store_secs: 3600
+
+  # Maximum size of file which can be uploaded to filedrop, in bytes.
+  max_file_size: 1073741824
+
+db:
+  # Driver to use for SQL DB (same as build tag you used to enable it).
+  driver: sqlite3
+
+  # Data Source Name, see underlying driver documentation for exact format you should use:
+  # - PostgreSQL https://godoc.org/github.com/lib/pq
+  #   TLDR: `postgres://user:password@address/dbname`
+  # - MySQL https://github.com/go-sql-driver/mysql
+  #   TLDR: `username:password@protocol(address)/dbname`
+  # - SQLite3 https://github.com/mattn/go-sqlite3
+  #   TLDR: `filepath`
+  dsn: /var/lib/filedrop/index.db
+
+# Where files will be saved on disk.
+storage_dir: /var/lib/filedrop
+
+# Specifies whether filedrop should return links with https scheme or not.
+# Overridden by X-HTTPS-Downstream header.
+https_downstream: true
