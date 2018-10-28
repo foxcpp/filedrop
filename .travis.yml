@@ -19,7 +19,7 @@ matrix:
     - psql -c 'create database filedrop_test;' -U postgres
 
 script:
-- go test -v -race -coverprofile=coverage.txt -covermode=atomic -tags $TEST_DB
+- go test -race -coverprofile=coverage.txt -covermode=atomic -tags $TEST_DB
 
 after_success:
 - bash <(curl -s https://codecov.io/bash)
