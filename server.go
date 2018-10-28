@@ -138,7 +138,7 @@ func (s *Server) removeFile(tx *sql.Tx, fileUUID string) error {
 	return nil
 }
 
-func (s *Server) OpenFile(fileUUID string) (io.Reader, error) {
+func (s *Server) OpenFile(fileUUID string) (io.ReadSeeker, error) {
 	// Just to check validity.
 	_, err := uuid.FromString(fileUUID)
 	if err != nil {
@@ -162,7 +162,7 @@ func (s *Server) OpenFile(fileUUID string) (io.Reader, error) {
 // Note that access using this function is equivalent to access
 // through HTTP API, so it will count against usage count, for example.
 // To avoid this use OpenFile(fileUUID).
-func (s *Server) GetFile(fileUUID string) (r io.Reader, contentType string, err error) {
+func (s *Server) GetFile(fileUUID string) (r io.ReadSeeker, contentType string, err error) {
 	// Just to check validity.
 	_, err = uuid.FromString(fileUUID)
 	if err != nil {
@@ -192,7 +192,7 @@ func (s *Server) GetFile(fileUUID string) (r io.Reader, contentType string, err 
 	}
 
 	fileLocation := filepath.Join(s.Conf.StorageDir, fileUUID)
-	file, err := os.Open(fileLocation)
+	r, err = os.Open(fileLocation)
 	if err != nil {
 		if os.IsNotExist(err) {
 			s.DB.RemoveFile(tx, fileUUID)
@@ -209,7 +209,7 @@ func (s *Server) GetFile(fileUUID string) (r io.Reader, contentType string, err 
 		return nil, "", errors.Wrap(err, "content type query")
 	}
 
-	return file, ttype, nil
+	return r, ttype, nil
 }
 
 func (s *Server) acceptFile(w http.ResponseWriter, r *http.Request) {
@@ -329,13 +329,9 @@ func (s *Server) serveFile(w http.ResponseWriter, r *http.Request) {
 	if ttype != "" {
 		w.Header().Set("Content-Type", ttype)
 	}
+	w.Header().Set("ETag", fileUUID)
 	w.Header().Set("Cache-Control", "public, immutable, max-age=31536000")
-	w.WriteHeader(http.StatusOK)
-	_, err = io.Copy(w, reader)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(err.Error()))
-	}
+	http.ServeContent(w, r, fileUUID, time.Time{}, reader)
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
