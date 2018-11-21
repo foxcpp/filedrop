@@ -17,6 +17,8 @@ import (
 )
 
 func TestBasicSubmit(t *testing.T) {
+	t.Parallel()
+
 	serv := initServ(filedrop.Default)
 	ts := httptest.NewServer(serv)
 	defer cleanServ(serv)
@@ -39,6 +41,8 @@ func TestBasicSubmit(t *testing.T) {
 }
 
 func TestFakeFilename(t *testing.T) {
+	t.Parallel()
+
 	conf := filedrop.Default
 	serv := initServ(conf)
 	ts := httptest.NewServer(serv)
@@ -58,6 +62,8 @@ func TestFakeFilename(t *testing.T) {
 }
 
 func TestNonExistent(t *testing.T) {
+	t.Parallel()
+
 	// Non-existent file should correctly return 404 code.
 	serv := initServ(filedrop.Default)
 	ts := httptest.NewServer(serv)
@@ -91,6 +97,8 @@ func TestNonExistent(t *testing.T) {
 }
 
 func TestContentTypePreserved(t *testing.T) {
+	t.Parallel()
+
 	serv := initServ(filedrop.Default)
 	ts := httptest.NewServer(serv)
 	defer cleanServ(serv)
@@ -126,6 +134,8 @@ func TestContentTypePreserved(t *testing.T) {
 }
 
 func TestNoContentType(t *testing.T) {
+	t.Parallel()
+
 	serv := initServ(filedrop.Default)
 	ts := httptest.NewServer(serv)
 	defer cleanServ(serv)
@@ -156,6 +166,8 @@ func TestNoContentType(t *testing.T) {
 }
 
 func TestHTTPSDownstream(t *testing.T) {
+	t.Parallel()
+
 	serv := initServ(filedrop.Default)
 	ts := httptest.NewServer(serv)
 	defer cleanServ(serv)
@@ -243,6 +255,8 @@ func testWithPrefix(t *testing.T, ts *httptest.Server, c *http.Client, prefix st
 }
 
 func TestPrefixAgnostic(t *testing.T) {
+	t.Parallel()
+
 	// Server should be able to handle requests independently
 	// from full URL.
 	serv := initServ(filedrop.Default)
@@ -257,6 +271,9 @@ func TestPrefixAgnostic(t *testing.T) {
 }
 
 func TestCleanup(t *testing.T) {
+	// FIXME: For some reason this test breaks when parallelized.
+	//t.Parallel()
+
 	conf := filedrop.Default
 	conf.CleanupIntervalSecs = 1
 	serv := initServ(conf)

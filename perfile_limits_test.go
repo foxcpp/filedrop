@@ -10,6 +10,8 @@ import (
 )
 
 func TestPerFileMaxUses(t *testing.T) {
+	t.Parallel()
+
 	conf := filedrop.Default
 	conf.Limits.MaxUses = 2
 	serv := initServ(conf)
@@ -49,6 +51,8 @@ func TestPerFileMaxUses(t *testing.T) {
 }
 
 func TestPerFileStoreTime(t *testing.T) {
+	t.Parallel()
+
 	conf := filedrop.Default
 	conf.Limits.MaxStoreSecs = 5
 	serv := initServ(conf)
@@ -97,6 +101,8 @@ func TestPerFileStoreTime(t *testing.T) {
 }
 
 func TestUnboundedFileLimits(t *testing.T) {
+	t.Parallel()
+
 	// Setting no limits in file should allow us to set them to any value in arguments.
 	conf := filedrop.Default
 	serv := initServ(conf)
