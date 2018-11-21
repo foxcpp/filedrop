@@ -11,8 +11,6 @@ import (
 )
 
 func TestGlobalMaxUses(t *testing.T) {
-	t.Parallel()
-
 	conf := filedrop.Default
 	conf.Limits.MaxUses = 2
 	serv := initServ(conf)
@@ -38,8 +36,6 @@ func TestGlobalMaxUses(t *testing.T) {
 }
 
 func TestGlobalMaxFileSize(t *testing.T) {
-	t.Parallel()
-
 	conf := filedrop.Default
 	conf.Limits.MaxFileSize = uint(len(file) - 20)
 	serv := initServ(conf)
@@ -64,8 +60,6 @@ func TestGlobalMaxFileSize(t *testing.T) {
 }
 
 func TestGlobalMaxStoreTime(t *testing.T) {
-	t.Parallel()
-
 	conf := filedrop.Default
 	conf.Limits.MaxStoreSecs = 3
 	serv := initServ(conf)
