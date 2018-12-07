@@ -39,7 +39,7 @@ supported SQL DBMS using build tags:
 * `sqlite3` for SQLite3
 * `mysql` for MySQL
 
-**Note:** No SQL server support is planned. However if you would like
+**Note:** No MS SQL Server support is planned. However if you would like
 to see it - PRs are welcome.
 
 When using filedrop as a library you are given more freedom. Just make
