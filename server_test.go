@@ -268,7 +268,7 @@ func TestCleanup(t *testing.T) {
 	URL := string(doPOST(t, c, ts.URL+"/filedrop?store-secs=1", "text/plain", strings.NewReader(file)))
 	splittenURL := strings.Split(URL, "/")
 	UUID := splittenURL[len(splittenURL)-1]
-	time.Sleep(2 * time.Second)
+	time.Sleep(4 * time.Second)
 
 	_, err := os.Stat(filepath.Join(serv.Conf.StorageDir, UUID))
 	if err == nil || !os.IsNotExist(err) {
