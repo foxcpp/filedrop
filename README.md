@@ -53,7 +53,7 @@ is here: [godoc.org](https://godoc.org/github.com/foxcpp/filedrop).
 #### Standalone server
 
 See `fildropd` subdirectory. To start server you need a configuration
-file. See example [here](filedrop.example.yml). It should be pretty
+file. See example [here](filedropd/filedropd.example.yml). It should be pretty
 straightforward. Then just pass path to configuration file in
 command-line arguments.
 
