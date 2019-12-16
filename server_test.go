@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -34,6 +35,36 @@ func TestBasicSubmit(t *testing.T) {
 		t.Log("Sent:", hex.EncodeToString(sentHash[:]))
 		recvHash := sha256.Sum256(fileBody)
 		t.Log("Received:", hex.EncodeToString(recvHash[:]))
+		t.FailNow()
+	}
+}
+
+func TestHeadAndGet(t *testing.T) {
+	serv := initServ(filedrop.Default)
+	ts := httptest.NewServer(serv)
+	defer cleanServ(serv)
+	defer ts.Close()
+	c := ts.Client()
+
+	url := string(doPOST(t, c, ts.URL+"/filedrop", "text/plain", strings.NewReader(file)))
+
+	t.Log("File URL:", url)
+
+	respHead, err := c.Head(url)
+	if err != nil {
+		t.Error("GET:", err)
+		t.FailNow()
+	}
+	respGet, err := c.Get(url)
+	if err != nil {
+		t.Error("HEAD:", err)
+		t.FailNow()
+	}
+	defer respHead.Body.Close()
+	defer respGet.Body.Close()
+
+	if !reflect.DeepEqual(respHead.Header, respGet.Header) {
+		t.Error("Headers are different!")
 		t.FailNow()
 	}
 }
