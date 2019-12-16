@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gofrs/uuid/v3"
+	"github.com/gofrs/uuid"
 	"github.com/pkg/errors"
 )
 
