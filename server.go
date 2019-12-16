@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gofrs/uuid/v3"
+	"github.com/gofrs/uuid"
 	"github.com/pkg/errors"
 )
 
@@ -347,7 +347,7 @@ func (s *Server) serveFile(w http.ResponseWriter, r *http.Request) {
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
 		s.acceptFile(w, r)
-	} else if r.Method == http.MethodGet {
+	} else if r.Method == http.MethodGet || r.Method == http.MethodHead {
 		s.serveFile(w, r)
 	} else {
 		w.WriteHeader(http.StatusMethodNotAllowed)
