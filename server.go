@@ -1,6 +1,7 @@
 package filedrop
 
 import (
+	"bytes"
 	"database/sql"
 	"fmt"
 	"io"
@@ -337,6 +338,9 @@ func (s *Server) serveFile(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("ETag", fileUUID)
 	w.Header().Set("Cache-Control", "public, immutable, max-age=31536000")
+	if r.Method == http.MethodOptions {
+		reader = bytes.NewReader([]byte{})
+	}
 	http.ServeContent(w, r, fileUUID, time.Time{}, reader)
 }
 
@@ -347,7 +351,11 @@ func (s *Server) serveFile(w http.ResponseWriter, r *http.Request) {
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
 		s.acceptFile(w, r)
-	} else if r.Method == http.MethodGet || r.Method == http.MethodHead {
+	} else if
+		r.Method == http.MethodGet ||
+		r.Method == http.MethodHead ||
+		r.Method == http.MethodOptions {
+
 		s.serveFile(w, r)
 	} else {
 		w.WriteHeader(http.StatusMethodNotAllowed)
