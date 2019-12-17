@@ -359,6 +359,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.serveFile(w, r)
 	} else if r.Method == http.MethodOptions {
 		w.Header().Set("Access-Control-Allow-Methods", "HEAD, GET, POST, DELETE")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length")
 		w.WriteHeader(http.StatusNoContent)
 	} else {
 		w.WriteHeader(http.StatusMethodNotAllowed)
