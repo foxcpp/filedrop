@@ -47,6 +47,9 @@ type Config struct {
 	// Overridden by X-HTTPS-Downstream header.
 	HTTPSDownstream bool `yaml:"https_downstream"`
 
+	// AllowedOrigins specifies Access-Control-Allow-Origin header.
+	AllowedOrigins string `yaml:"allowed_origins"`
+
 	// Internal, used only for testing. Always 60 secs in production.
 	CleanupIntervalSecs int `yaml:"-"`
 }

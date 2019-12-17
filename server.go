@@ -349,14 +349,17 @@ func (s *Server) serveFile(w http.ResponseWriter, r *http.Request) {
 // Note that filedrop code is URL prefix-agnostic, so request URI doesn't
 // matters much.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allowed-Origin", s.Conf.AllowedOrigins)
 	if r.Method == http.MethodPost {
 		s.acceptFile(w, r)
 	} else if
 		r.Method == http.MethodGet ||
-		r.Method == http.MethodHead ||
-		r.Method == http.MethodOptions {
+		r.Method == http.MethodHead {
 
 		s.serveFile(w, r)
+	} else if r.Method == http.MethodOptions {
+		w.Header().Set("Access-Control-Allow-Methods", "HEAD, GET, POST, DELETE")
+		w.WriteHeader(http.StatusNoContent)
 	} else {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		w.Write([]byte("405 method not allowed"))

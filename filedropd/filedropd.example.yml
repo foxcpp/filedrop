@@ -35,3 +35,6 @@ storage_dir: /var/lib/filedrop
 # Specifies whether filedrop should return links with https scheme or not.
 # Overridden by X-HTTPS-Downstream header.
 https_downstream: true
+
+# Specifies Access-Control-Allow-Origin header.
+allowed_origins: "*"
