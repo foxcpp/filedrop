@@ -220,8 +220,6 @@ func (s *Server) GetFile(fileUUID string) (r io.ReadSeeker, contentType string, 
 }
 
 func (s *Server) acceptFile(w http.ResponseWriter, r *http.Request) {
-	splittenPath := strings.Split(r.URL.Path, "/")
-
 	if s.Conf.UploadAuth.Callback != nil && !s.Conf.UploadAuth.Callback(r) {
 		w.WriteHeader(http.StatusForbidden)
 		w.Write([]byte("403 forbidden"))
@@ -291,6 +289,10 @@ func (s *Server) acceptFile(w http.ResponseWriter, r *http.Request) {
 		resURL.Scheme = "http"
 	}
 	resURL.Host = r.Host
+	splittenPath := strings.Split(r.URL.Path, "/")
+	if r.URL.Path == "/" {
+		splittenPath = nil
+	}
 	splittenPath = append(splittenPath, fileUUID)
 	resURL.Path = strings.Join(splittenPath, "/")
 
@@ -352,8 +354,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", s.Conf.AllowedOrigins)
 	if r.Method == http.MethodPost {
 		s.acceptFile(w, r)
-	} else if
-		r.Method == http.MethodGet ||
+	} else if r.Method == http.MethodGet ||
 		r.Method == http.MethodHead {
 
 		s.serveFile(w, r)

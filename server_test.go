@@ -39,6 +39,33 @@ func TestBasicSubmit(t *testing.T) {
 	}
 }
 
+func TestBasicSubmit_NoPath(t *testing.T) {
+	serv := initServ(filedrop.Default)
+	ts := httptest.NewServer(serv)
+	defer cleanServ(serv)
+	defer ts.Close()
+	c := ts.Client()
+
+	url := string(doPOST(t, c, ts.URL+"", "text/plain", strings.NewReader(file)))
+
+	t.Log("File URL:", url)
+
+	// First match is in http://
+	if strings.Count(url, "//") > 1 {
+		t.Error("URL path includes empty components")
+	}
+
+	fileBody := doGET(t, c, url)
+	if string(fileBody) != file {
+		t.Log("Got different file!")
+		sentHash := sha256.Sum256([]byte(file))
+		t.Log("Sent:", hex.EncodeToString(sentHash[:]))
+		recvHash := sha256.Sum256(fileBody)
+		t.Log("Received:", hex.EncodeToString(recvHash[:]))
+		t.FailNow()
+	}
+}
+
 func TestHeadAndGet(t *testing.T) {
 	serv := initServ(filedrop.Default)
 	ts := httptest.NewServer(serv)
