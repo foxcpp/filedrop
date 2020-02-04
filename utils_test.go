@@ -48,7 +48,9 @@ func initServ(conf filedrop.Config) *filedrop.Server {
 }
 
 func cleanServ(serv *filedrop.Server) {
-	serv.DB.Exec(`DROP TABLE filedrop`)
+	if _, err := serv.DB.Exec(`DROP TABLE filedrop`); err != nil {
+		panic(err)
+	}
 	serv.Close()
 	os.Remove(serv.Conf.StorageDir)
 }

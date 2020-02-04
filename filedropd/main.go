@@ -35,8 +35,11 @@ func main() {
 	}
 
 	go func() {
-		log.Println("Listening on", config.ListenOn + "...")
-		http.ListenAndServe(config.ListenOn, serv)
+		log.Println("Listening on", config.ListenOn+"...")
+		if err := http.ListenAndServe(config.ListenOn, serv); err != nil {
+			log.Println("Failed to listen:", err)
+			os.Exit(1)
+		}
 	}()
 
 	sig := make(chan os.Signal, 1)

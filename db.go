@@ -50,12 +50,9 @@ func openDB(driver, dsn string) (*db, error) {
 	}
 	if driver == "sqlite3" {
 		// Also some optimizations for SQLite to make it FAA-A-A-AST.
-		db.Exec(`PRAGMA foreign_keys = ON`)
 		db.Exec(`PRAGMA auto_vacuum = INCREMENTAL`)
 		db.Exec(`PRAGMA journal_mode = WAL`)
-		db.Exec(`PRAGMA defer_foreign_keys = ON`)
 		db.Exec(`PRAGMA synchronous = NORMAL`)
-		db.Exec(`PRAGMA temp_store = MEMORY`)
 		db.Exec(`PRAGMA cache_size = 5000`)
 	}
 

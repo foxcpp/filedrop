@@ -156,7 +156,10 @@ func (s *Server) OpenFile(fileUUID string) (io.ReadSeeker, error) {
 	file, err := os.Open(fileLocation)
 	if err != nil {
 		if os.IsNotExist(err) {
-			s.removeFile(nil, fileUUID)
+			// Clean up the DB entry if the file was removed by an external program.
+			if err := s.DB.RemoveFile(nil, fileUUID); err != nil {
+				s.Logger.Printf("DB remove failure (%v): %v\n", fileUUID, err)
+			}
 			return nil, ErrFileDoesntExists
 		}
 		return nil, err
@@ -202,8 +205,11 @@ func (s *Server) GetFile(fileUUID string) (r io.ReadSeeker, contentType string, 
 	r, err = os.Open(fileLocation)
 	if err != nil {
 		if os.IsNotExist(err) {
-			s.DB.RemoveFile(tx, fileUUID)
 			return nil, "", ErrFileDoesntExists
+		}
+		// Clean up the DB entry if the file was removed by an external program.
+		if err := s.DB.RemoveFile(tx, fileUUID); err != nil {
+			s.Logger.Printf("DB remove failure (%v): %v\n", fileUUID, err)
 		}
 		return nil, "", err
 	}
@@ -221,14 +227,14 @@ func (s *Server) GetFile(fileUUID string) (r io.ReadSeeker, contentType string, 
 
 func (s *Server) acceptFile(w http.ResponseWriter, r *http.Request) {
 	if s.Conf.UploadAuth.Callback != nil && !s.Conf.UploadAuth.Callback(r) {
-		w.WriteHeader(http.StatusForbidden)
-		w.Write([]byte("403 forbidden"))
+		s.Logger.Printf("Authentication failure (URL %v, IP %v)", r.URL.String(), r.RemoteAddr)
+		s.writeErr(w, r, http.StatusForbidden, "forbidden")
 		return
 	}
 
 	if s.Conf.Limits.MaxFileSize != 0 && r.ContentLength > int64(s.Conf.Limits.MaxFileSize) {
-		w.WriteHeader(http.StatusRequestEntityTooLarge)
-		w.Write([]byte("413 request entity too large"))
+		s.Logger.Printf("Too big file (URL %v, IP %v)", r.URL.String(), r.RemoteAddr)
+		s.writeErr(w, r, http.StatusRequestEntityTooLarge, "too big file")
 		return
 	}
 
@@ -238,13 +244,13 @@ func (s *Server) acceptFile(w http.ResponseWriter, r *http.Request) {
 	} else if r.URL.Query().Get("store-secs") != "" {
 		secs, err := strconv.Atoi(r.URL.Query().Get("store-secs"))
 		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte("400 bad request (invalid store-secs value)"))
+			s.Logger.Printf("Invalid store-secs (URL %v, IP %v)", r.URL.String(), r.RemoteAddr)
+			s.writeErr(w, r, http.StatusBadRequest, "invalid store-secs value")
 			return
 		}
 		if s.Conf.Limits.MaxStoreSecs != 0 && uint(secs) > s.Conf.Limits.MaxStoreSecs {
-			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte("400 bad request (too big store-secs value)"))
+			s.Logger.Printf("Too big store-secs (URL %v, IP %v)", r.URL.String(), r.RemoteAddr)
+			s.writeErr(w, r, http.StatusBadRequest, "too big store-secs value")
 			return
 		}
 		storeUntil = time.Now().Add(time.Duration(secs) * time.Second)
@@ -256,13 +262,13 @@ func (s *Server) acceptFile(w http.ResponseWriter, r *http.Request) {
 		var err error
 		maxUses, err := strconv.Atoi(r.URL.Query().Get("max-uses"))
 		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte("400 bad request (invalid max-uses value)"))
+			s.Logger.Printf("Invalid max-uses store-secs (URL %v, IP %v)", r.URL.String(), r.RemoteAddr)
+			s.writeErr(w, r, http.StatusBadRequest, "invalid max-uses value")
 			return
 		}
 		if s.Conf.Limits.MaxUses != 0 && uint(maxUses) > s.Conf.Limits.MaxUses {
-			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte("400 bad request (too big max-uses value)"))
+			s.Logger.Printf("Too big max-uses store-secs (URL %v, IP %v)", r.URL.String(), r.RemoteAddr)
+			s.writeErr(w, r, http.StatusBadRequest, "too big max-uses value")
 			return
 		}
 	}
@@ -270,8 +276,7 @@ func (s *Server) acceptFile(w http.ResponseWriter, r *http.Request) {
 	fileUUID, err := s.AddFile(r.Body, r.Header.Get("Content-Type"), maxUses, storeUntil)
 	if err != nil {
 		s.Logger.Println("Error while serving", r.RequestURI+":", err)
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(err.Error()))
+		s.writeErr(w, r, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
@@ -296,29 +301,39 @@ func (s *Server) acceptFile(w http.ResponseWriter, r *http.Request) {
 	splittenPath = append(splittenPath, fileUUID)
 	resURL.Path = strings.Join(splittenPath, "/")
 
+	w.Header().Add("Content-Type", `text/plain; charset="us-ascii"`)
 	w.WriteHeader(http.StatusCreated)
-	w.Write([]byte(resURL.String()))
+	if _, err := w.Write([]byte(resURL.String())); err != nil {
+		s.Logger.Printf("I/O error (URL %v, IP %v): %v", r.URL.String(), r.RemoteAddr, err)
+	}
+}
+
+func (s *Server) writeErr(w http.ResponseWriter, r *http.Request, code int, replyText string) {
+	w.Header().Add("Content-Type", `text/plain; charset="us-ascii"`)
+	w.WriteHeader(code)
+	_, err := io.WriteString(w, strconv.Itoa(code)+" "+replyText)
+	if err != nil {
+		s.Logger.Printf("I/O error (URL %v, IP %v): %v", r.URL.String(), r.RemoteAddr, err)
+	}
 }
 
 func (s *Server) serveFile(w http.ResponseWriter, r *http.Request) {
 	if s.Conf.DownloadAuth.Callback != nil && !s.Conf.DownloadAuth.Callback(r) {
-		w.WriteHeader(http.StatusForbidden)
-		w.Write([]byte("403 forbidden"))
+		s.Logger.Printf("Authentication failure (URL %v, IP %v)", r.URL.String(), r.RemoteAddr)
+		s.writeErr(w, r, http.StatusForbidden, "forbidden")
 		return
 	}
 
 	splittenPath := strings.Split(r.URL.Path, "/")
 	if len(splittenPath) < 2 {
-		w.WriteHeader(http.StatusNotFound)
-		w.Write([]byte("404 not found"))
+		s.writeErr(w, r, http.StatusNotFound, "not found")
 		return
 	}
 	fileUUID := splittenPath[len(splittenPath)-1]
 	if _, err := uuid.FromString(fileUUID); err != nil {
 		// Probably last component is fake "filename".
 		if len(splittenPath) == 1 {
-			w.WriteHeader(http.StatusNotFound)
-			w.Write([]byte("404 not found"))
+			s.writeErr(w, r, http.StatusNotFound, "not found")
 			return
 		}
 		fileUUID = splittenPath[len(splittenPath)-2]
@@ -326,12 +341,10 @@ func (s *Server) serveFile(w http.ResponseWriter, r *http.Request) {
 	reader, ttype, err := s.GetFile(fileUUID)
 	if err != nil {
 		if err == ErrFileDoesntExists {
-			w.WriteHeader(http.StatusNotFound)
-			w.Write([]byte("404 not found"))
+			s.writeErr(w, r, http.StatusNotFound, "not found")
 		} else {
 			s.Logger.Println("Error while serving", r.RequestURI+":", err)
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(err.Error()))
+			s.writeErr(w, r, http.StatusInternalServerError, "internal server error")
 		}
 		return
 	}
@@ -363,8 +376,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length")
 		w.WriteHeader(http.StatusNoContent)
 	} else {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		w.Write([]byte("405 method not allowed"))
+		s.writeErr(w, r, http.StatusMethodNotAllowed, "method not allowed")
 	}
 }
 
