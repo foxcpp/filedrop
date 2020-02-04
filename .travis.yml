@@ -7,11 +7,6 @@ go:
 matrix:
   include:
   - env: GO111MODULE=on TEST_DB=sqlite3 TEST_DSN=":memory:"
-  - env: GO111MODULE=on TEST_DB=mysql TEST_DSN="root@tcp(localhost)/filedrop_test"
-    services:
-    - mysql
-    before_install:
-    - mysql -u root -e 'CREATE DATABASE IF NOT EXISTS filedrop_test;'
   - env: GO111MODULE=on TEST_DB=postgres TEST_DSN="user=postgres dbname=filedrop_test sslmode=disable"
     services:
     - postgresql
