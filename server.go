@@ -10,8 +10,10 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/gofrs/uuid"
@@ -26,8 +28,10 @@ type Server struct {
 	Conf        Config
 	Logger      *log.Logger
 	DebugLogger *log.Logger
-
-	fileCleanerStopChan chan bool
+	
+	// UNIX timestamp of last cleaner run. 0 if it is currently running.
+	// Use sync/atomic to access this variable.
+	fileCleanerLastRun int64
 }
 
 // Create and initialize new server instance using passed configuration.
@@ -47,12 +51,14 @@ func New(conf Config) (*Server, error) {
 		return nil, err
 	}
 
-	s.fileCleanerStopChan = make(chan bool)
+	s.fileCleanerLastRun = time.Now().Unix()
+	if s.Conf.CleanupIntervalSecs < 1 {
+		s.Conf.CleanupIntervalSecs = 60
+	}
+	
 	s.Logger = log.New(os.Stderr, "filedrop ", log.LstdFlags)
 	s.DB, err = openDB(conf.DB.Driver, conf.DB.DSN)
-
-	go s.fileCleaner()
-
+	
 	return s, err
 }
 
@@ -364,6 +370,14 @@ func (s *Server) serveFile(w http.ResponseWriter, r *http.Request) {
 // Note that filedrop code is URL prefix-agnostic, so request URI doesn't
 // matters much.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Run a cleanup in a goroutine only if not cleaning up at the moment
+	// and last cleanup was more than CleanupIntervalSeconds seconds ago.
+	if atomic.LoadInt64(&s.fileCleanerLastRun) != 0 {
+		if time.Now().Unix() - atomic.LoadInt64(&s.fileCleanerLastRun) > int64(s.Conf.CleanupIntervalSecs) {
+			go s.cleanupFiles()
+		}
+	}
+
 	w.Header().Set("Access-Control-Allow-Origin", s.Conf.AllowedOrigins)
 	if r.Method == http.MethodPost {
 		s.acceptFile(w, r)
@@ -381,30 +395,23 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) Close() error {
-	// don't close DB if "cleaner" is doing something, wait for it to finish
-	s.fileCleanerStopChan <- true
-	<-s.fileCleanerStopChan
-
+	// The file cleaner must not be running
+	for atomic.LoadInt64(&s.fileCleanerLastRun) == 0 {
+		runtime.Gosched()
+		time.Sleep(250 * time.Millisecond)
+	}
 	return s.DB.Close()
 }
 
-func (s *Server) fileCleaner() {
-	if s.Conf.CleanupIntervalSecs == 0 {
-		s.Conf.CleanupIntervalSecs = 60
-	}
-	tick := time.NewTicker(time.Duration(s.Conf.CleanupIntervalSecs) * time.Second)
-	for {
-		select {
-		case <-s.fileCleanerStopChan:
-			s.fileCleanerStopChan <- true
-			return
-		case <-tick.C:
-			s.cleanupFiles()
-		}
-	}
-}
-
 func (s *Server) cleanupFiles() {
+	// Use fileCleanerLastRun as "mutex".
+	if atomic.LoadInt64(&s.fileCleanerLastRun) == 0 {
+		// Redundant sanity check: don't do anything when already running.
+		return
+	}
+	atomic.StoreInt64(&s.fileCleanerLastRun, 0)
+	defer atomic.StoreInt64(&s.fileCleanerLastRun, time.Now().Unix())
+
 	tx, err := s.DB.Begin()
 	if err != nil {
 		s.Logger.Println("Failed to begin transaction for clean-up:", err)
