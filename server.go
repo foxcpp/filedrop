@@ -10,7 +10,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -28,10 +27,8 @@ type Server struct {
 	Conf        Config
 	Logger      *log.Logger
 	DebugLogger *log.Logger
-	
-	// UNIX timestamp of last cleaner run. 0 if it is currently running.
-	// Use sync/atomic to access this variable.
-	fileCleanerLastRun int64
+
+	fileCleanerRunTime int64
 }
 
 // Create and initialize new server instance using passed configuration.
@@ -43,17 +40,15 @@ func New(conf Config) (*Server, error) {
 	var err error
 
 	s.Conf = conf
+	if s.Conf.CleanupIntervalSecs < 1 {
+		s.Conf.CleanupIntervalSecs = 60
+	}
 
 	if err := os.MkdirAll(conf.StorageDir, os.ModePerm); err != nil {
 		return nil, err
 	}
 	if err := s.testPerms(); err != nil {
 		return nil, err
-	}
-
-	s.fileCleanerLastRun = time.Now().Unix()
-	if s.Conf.CleanupIntervalSecs < 1 {
-		s.Conf.CleanupIntervalSecs = 60
 	}
 	
 	s.Logger = log.New(os.Stderr, "filedrop ", log.LstdFlags)
@@ -370,20 +365,10 @@ func (s *Server) serveFile(w http.ResponseWriter, r *http.Request) {
 // Note that filedrop code is URL prefix-agnostic, so request URI doesn't
 // matters much.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// Run a cleanup in a goroutine only if not cleaning up at the moment
-	// and last cleanup was more than CleanupIntervalSeconds seconds ago.
-	if atomic.LoadInt64(&s.fileCleanerLastRun) != 0 {
-		if time.Now().Unix() - atomic.LoadInt64(&s.fileCleanerLastRun) > int64(s.Conf.CleanupIntervalSecs) {
-			go s.cleanupFiles()
-		}
-	}
-
 	w.Header().Set("Access-Control-Allow-Origin", s.Conf.AllowedOrigins)
 	if r.Method == http.MethodPost {
 		s.acceptFile(w, r)
-	} else if r.Method == http.MethodGet ||
-		r.Method == http.MethodHead {
-
+	} else if r.Method == http.MethodGet || r.Method == http.MethodHead {
 		s.serveFile(w, r)
 	} else if r.Method == http.MethodOptions {
 		w.Header().Set("Access-Control-Allow-Methods", "HEAD, GET, POST, DELETE")
@@ -392,26 +377,21 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	} else {
 		s.writeErr(w, r, http.StatusMethodNotAllowed, "method not allowed")
 	}
+
+	// Run a cleanup in a goroutine only if last cleanup was more than CleanupIntervalSecs seconds ago.
+	if time.Now().Unix() - atomic.LoadInt64(&s.fileCleanerRunTime) > int64(s.Conf.CleanupIntervalSecs) {
+		// Set run time twice to exclude cleanup time.
+		atomic.StoreInt64(&s.fileCleanerRunTime, time.Now().Unix())
+		s.cleanupFiles()
+		atomic.StoreInt64(&s.fileCleanerRunTime, time.Now().Unix())
+	}
 }
 
 func (s *Server) Close() error {
-	// The file cleaner must not be running
-	for atomic.LoadInt64(&s.fileCleanerLastRun) == 0 {
-		runtime.Gosched()
-		time.Sleep(250 * time.Millisecond)
-	}
 	return s.DB.Close()
 }
 
 func (s *Server) cleanupFiles() {
-	// Use fileCleanerLastRun as "mutex".
-	if atomic.LoadInt64(&s.fileCleanerLastRun) == 0 {
-		// Redundant sanity check: don't do anything when already running.
-		return
-	}
-	atomic.StoreInt64(&s.fileCleanerLastRun, 0)
-	defer atomic.StoreInt64(&s.fileCleanerLastRun, time.Now().Unix())
-
 	tx, err := s.DB.Begin()
 	if err != nil {
 		s.Logger.Println("Failed to begin transaction for clean-up:", err)
