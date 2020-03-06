@@ -49,6 +49,7 @@ func openDB(driver, dsn string) (*db, error) {
 		db.Exec(`SET SESSION TRANSACTION ISOLATION LEVEL SERIALIZABLE`)
 	}
 	if driver == "sqlite3" {
+		db.DB.SetMaxOpenConns(1)
 		// Also some optimizations for SQLite to make it FAA-A-A-AST.
 		db.Exec(`PRAGMA auto_vacuum = INCREMENTAL`)
 		db.Exec(`PRAGMA journal_mode = WAL`)
