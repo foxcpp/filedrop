@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/gofrs/uuid"
@@ -27,7 +28,7 @@ type Server struct {
 	Logger      *log.Logger
 	DebugLogger *log.Logger
 
-	fileCleanerStopChan chan bool
+	fileCleanerRunTime int64
 }
 
 // Create and initialize new server instance using passed configuration.
@@ -39,6 +40,9 @@ func New(conf Config) (*Server, error) {
 	var err error
 
 	s.Conf = conf
+	if s.Conf.CleanupIntervalSecs < 1 {
+		s.Conf.CleanupIntervalSecs = 60
+	}
 
 	if err := os.MkdirAll(conf.StorageDir, os.ModePerm); err != nil {
 		return nil, err
@@ -46,13 +50,10 @@ func New(conf Config) (*Server, error) {
 	if err := s.testPerms(); err != nil {
 		return nil, err
 	}
-
-	s.fileCleanerStopChan = make(chan bool)
+	
 	s.Logger = log.New(os.Stderr, "filedrop ", log.LstdFlags)
 	s.DB, err = openDB(conf.DB.Driver, conf.DB.DSN)
-
-	go s.fileCleaner()
-
+	
 	return s, err
 }
 
@@ -367,9 +368,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", s.Conf.AllowedOrigins)
 	if r.Method == http.MethodPost {
 		s.acceptFile(w, r)
-	} else if r.Method == http.MethodGet ||
-		r.Method == http.MethodHead {
-
+	} else if r.Method == http.MethodGet || r.Method == http.MethodHead {
 		s.serveFile(w, r)
 	} else if r.Method == http.MethodOptions {
 		w.Header().Set("Access-Control-Allow-Methods", "HEAD, GET, POST, DELETE")
@@ -378,30 +377,18 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	} else {
 		s.writeErr(w, r, http.StatusMethodNotAllowed, "method not allowed")
 	}
+
+	// Run a cleanup in a goroutine only if last cleanup was more than CleanupIntervalSecs seconds ago.
+	if time.Now().Unix() - atomic.LoadInt64(&s.fileCleanerRunTime) > int64(s.Conf.CleanupIntervalSecs) {
+		// Set run time twice to exclude cleanup time.
+		atomic.StoreInt64(&s.fileCleanerRunTime, time.Now().Unix())
+		s.cleanupFiles()
+		atomic.StoreInt64(&s.fileCleanerRunTime, time.Now().Unix())
+	}
 }
 
 func (s *Server) Close() error {
-	// don't close DB if "cleaner" is doing something, wait for it to finish
-	s.fileCleanerStopChan <- true
-	<-s.fileCleanerStopChan
-
 	return s.DB.Close()
-}
-
-func (s *Server) fileCleaner() {
-	if s.Conf.CleanupIntervalSecs == 0 {
-		s.Conf.CleanupIntervalSecs = 60
-	}
-	tick := time.NewTicker(time.Duration(s.Conf.CleanupIntervalSecs) * time.Second)
-	for {
-		select {
-		case <-s.fileCleanerStopChan:
-			s.fileCleanerStopChan <- true
-			return
-		case <-tick.C:
-			s.cleanupFiles()
-		}
-	}
 }
 
 func (s *Server) cleanupFiles() {

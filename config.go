@@ -50,7 +50,8 @@ type Config struct {
 	// AllowedOrigins specifies Access-Control-Allow-Origin header.
 	AllowedOrigins string `yaml:"allowed_origins"`
 
-	// Internal, used only for testing. Always 60 secs in production.
+	// Minimal interval between cleanups. Always 60 secs in production.
+	// Internal, used only for testing.
 	CleanupIntervalSecs int `yaml:"-"`
 }
 

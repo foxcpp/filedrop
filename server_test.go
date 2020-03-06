@@ -327,6 +327,7 @@ func TestCleanup(t *testing.T) {
 	splittenURL := strings.Split(URL, "/")
 	UUID := splittenURL[len(splittenURL)-1]
 	time.Sleep(4 * time.Second)
+	c.Get(URL) // Trigger cleanup
 
 	_, err := os.Stat(filepath.Join(serv.Conf.StorageDir, UUID))
 	if err == nil || !os.IsNotExist(err) {
